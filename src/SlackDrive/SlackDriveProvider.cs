@@ -122,11 +122,26 @@ public class SlackDriveProvider : NavigationCmdletProvider
         var parts = normalizedPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0) return true;
 
-        return parts[0].ToLower() switch
+        var firstPart = parts[0].ToLower();
+        
+        // ルートレベル: channels, users, files
+        if (parts.Length == 1)
         {
-            "channels" or "users" or "files" => true,
-            _ => false
-        };
+            return firstPart is "channels" or "users" or "files";
+        }
+        
+        // 2階層目: channels/xxx, users/xxx
+        if (parts.Length == 2)
+        {
+            return firstPart switch
+            {
+                "channels" => GetChannelByName(parts[1]) != null,
+                "users" => GetUserByName(parts[1]) != null,
+                _ => false
+            };
+        }
+        
+        return false;
     }
 
     protected override void GetItem(string path)
@@ -276,8 +291,23 @@ public class SlackDriveProvider : NavigationCmdletProvider
 
         if (channels == null)
         {
-            channels = FetchChannels();
-            drive.Cache.Channels = channels;
+            // ファイルキャッシュを試す
+            var fileCache = SlackCacheManager.LoadCache(drive.TeamId);
+            if (fileCache?.Channels != null)
+            {
+                channels = fileCache.Channels.ToDictionary(c => c.Id);
+                drive.Cache.Channels = channels;
+                WriteVerbose($"Loaded {channels.Count} channels from cache (updated: {fileCache.UpdatedAt:yyyy-MM-dd HH:mm})");
+            }
+            else
+            {
+                // APIから取得
+                channels = FetchChannels();
+                drive.Cache.Channels = channels;
+                // ファイルキャッシュに保存
+                SlackCacheManager.SaveChannels(drive.TeamId, channels.Values);
+                WriteVerbose($"Fetched and cached {channels.Count} channels");
+            }
         }
 
         foreach (var channel in channels.Values.OrderBy(c => c.Name))
@@ -291,19 +321,13 @@ public class SlackDriveProvider : NavigationCmdletProvider
         var drive = GetSlackDrive();
         var result = new Dictionary<string, SlackChannel>();
         string? cursor = null;
-        int pageCount = 0;
 
-        do
+        while (true)
         {
-            // Rate limit対策: 2ページ目以降は1秒待機
-            if (pageCount > 0)
-            {
-                System.Threading.Thread.Sleep(1000);
-            }
-
             var queryParams = new Dictionary<string, string>
             {
                 ["types"] = "public_channel,private_channel",
+                ["exclude_archived"] = "true",
                 ["limit"] = "200"
             };
             if (cursor != null) queryParams["cursor"] = cursor;
@@ -314,6 +338,14 @@ public class SlackDriveProvider : NavigationCmdletProvider
             if (!root.GetProperty("ok").GetBoolean())
             {
                 var error = root.TryGetProperty("error", out var e) ? e.GetString() : "Unknown error";
+                
+                // Rate limit hit - wait and retry
+                if (error == "ratelimited")
+                {
+                    System.Threading.Thread.Sleep(5000);
+                    continue;
+                }
+                
                 throw new InvalidOperationException($"Failed to get channels: {error}");
             }
 
@@ -337,8 +369,8 @@ public class SlackDriveProvider : NavigationCmdletProvider
                 ? c.GetString()
                 : null;
 
-            pageCount++;
-        } while (cursor != null);
+            if (cursor == null) break;
+        }
 
         return result;
     }
@@ -358,8 +390,23 @@ public class SlackDriveProvider : NavigationCmdletProvider
 
         if (users == null)
         {
-            users = FetchUsers();
-            drive.Cache.Users = users;
+            // ファイルキャッシュを試す
+            var fileCache = SlackCacheManager.LoadCache(drive.TeamId);
+            if (fileCache?.Users != null)
+            {
+                users = fileCache.Users.ToDictionary(u => u.Id);
+                drive.Cache.Users = users;
+                WriteVerbose($"Loaded {users.Count} users from cache (updated: {fileCache.UpdatedAt:yyyy-MM-dd HH:mm})");
+            }
+            else
+            {
+                // APIから取得
+                users = FetchUsers();
+                drive.Cache.Users = users;
+                // ファイルキャッシュに保存
+                SlackCacheManager.SaveUsers(drive.TeamId, users.Values);
+                WriteVerbose($"Fetched and cached {users.Count} users");
+            }
         }
 
         foreach (var user in users.Values.Where(u => !u.IsDeleted).OrderBy(u => u.Name))
@@ -373,16 +420,9 @@ public class SlackDriveProvider : NavigationCmdletProvider
         var drive = GetSlackDrive();
         var result = new Dictionary<string, SlackUser>();
         string? cursor = null;
-        int pageCount = 0;
 
-        do
+        while (true)
         {
-            // Rate limit対策: 2ページ目以降は1秒待機
-            if (pageCount > 0)
-            {
-                System.Threading.Thread.Sleep(1000);
-            }
-
             var queryParams = new Dictionary<string, string> { ["limit"] = "200" };
             if (cursor != null) queryParams["cursor"] = cursor;
 
@@ -392,6 +432,14 @@ public class SlackDriveProvider : NavigationCmdletProvider
             if (!root.GetProperty("ok").GetBoolean())
             {
                 var error = root.TryGetProperty("error", out var e) ? e.GetString() : "Unknown error";
+                
+                // Rate limit hit - wait and retry
+                if (error == "ratelimited")
+                {
+                    System.Threading.Thread.Sleep(5000);
+                    continue;
+                }
+                
                 throw new InvalidOperationException($"Failed to get users: {error}");
             }
 
@@ -418,8 +466,8 @@ public class SlackDriveProvider : NavigationCmdletProvider
                 ? c.GetString()
                 : null;
 
-            pageCount++;
-        } while (cursor != null);
+            if (cursor == null) break;
+        }
 
         return result;
     }

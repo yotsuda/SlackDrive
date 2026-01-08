@@ -10,7 +10,7 @@
     NestedModules = @('SlackDrive.psm1')
     FormatsToProcess = @('SlackDrive.Format.ps1xml')
     FunctionsToExport = @('New-SlackDrive')
-    CmdletsToExport = @('Edit-SDConfig')
+    CmdletsToExport = @('Edit-SDConfig', 'Update-SDCache')
     AliasesToExport = @()
     PrivateData = @{
         PSData = @{

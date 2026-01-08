@@ -32,8 +32,15 @@ public class SlackApiClient : IDisposable
         }
 
         var response = await _httpClient.GetAsync(url);
-        response.EnsureSuccessStatusCode();
         var content = await response.Content.ReadAsStringAsync();
+        
+        // 429 (Rate Limited) はボディに ok:false, error:ratelimited が含まれるのでパースして返す
+        // 他のエラーは例外をスロー
+        if (!response.IsSuccessStatusCode && response.StatusCode != System.Net.HttpStatusCode.TooManyRequests)
+        {
+            response.EnsureSuccessStatusCode();
+        }
+        
         return JsonDocument.Parse(content);
     }
 

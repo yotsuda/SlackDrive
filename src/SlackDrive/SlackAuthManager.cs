@@ -85,7 +85,7 @@ public class SlackAuthManager
         string state = Guid.NewGuid().ToString("N");
         string authUrl = $"https://slack.com/oauth/v2/authorize" +
             $"?client_id={_settings.ClientId}" +
-            $"&scope={Uri.EscapeDataString(scopes)}" +
+            $"&user_scope={Uri.EscapeDataString(scopes)}" +
             $"&redirect_uri={Uri.EscapeDataString(redirectUrl)}" +
             $"&state={state}" +
             $"&code_challenge={codeChallenge}" +
@@ -101,7 +101,17 @@ public class SlackAuthManager
     private string WaitForAuthorizationCode(string redirectUrl, string expectedState, string authUrl)
     {
         var uri = new Uri(redirectUrl);
-        string listenerPrefix = $"{uri.Scheme}://{uri.Host}:{uri.Port}{uri.AbsolutePath}";
+        
+        // ngrok や外部 URL の場合は localhost:8765 で待機
+        string listenerPrefix;
+        if (uri.Host.Contains("ngrok") || uri.Host.Contains("localtunnel") || uri.Scheme == "https")
+        {
+            listenerPrefix = $"http://localhost:8765{uri.AbsolutePath}";
+        }
+        else
+        {
+            listenerPrefix = $"{uri.Scheme}://{uri.Host}:{uri.Port}{uri.AbsolutePath}";
+        }
         if (!listenerPrefix.EndsWith("/")) listenerPrefix += "/";
         
         using var listener = new HttpListener();
@@ -112,9 +122,10 @@ public class SlackAuthManager
         }
         catch (HttpListenerException ex)
         {
-            string message = uri.Port <= 1024
-                ? $"Failed to start HttpListener on port {uri.Port}. Administrative privileges may be required."
-                : $"Failed to start HttpListener on port {uri.Port}. The port may be in use.";
+            int port = uri.Host.Contains("ngrok") ? 8765 : uri.Port;
+            string message = port <= 1024
+                ? $"Failed to start HttpListener on port {port}. Administrative privileges may be required."
+                : $"Failed to start HttpListener on port {port}. The port may be in use.";
             throw new InvalidOperationException(message, ex);
         }
         
@@ -211,7 +222,16 @@ public class SlackAuthManager
             throw new InvalidOperationException($"Token exchange failed: {error}");
         }
         
-        _accessToken = root.GetProperty("access_token").GetString();
+        // User Token は authed_user.access_token に含まれる
+        if (root.TryGetProperty("authed_user", out var authedUser))
+        {
+            _accessToken = authedUser.GetProperty("access_token").GetString();
+        }
+        else
+        {
+            // Bot Token fallback
+            _accessToken = root.GetProperty("access_token").GetString();
+        }
         
         if (root.TryGetProperty("refresh_token", out var rt))
         {
