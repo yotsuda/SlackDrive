@@ -1,0 +1,17 @@
+# Build outputs
+bin/
+obj/
+
+# Module outputs (except psd1 and psm1)
+module/*.dll
+module/*.pdb
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+
+# OS
+.DS_Store
+Thumbs.db
