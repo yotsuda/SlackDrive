@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration>
+  <ViewDefinitions>
+
+    <!-- SlackDriveInfo -->
+    <View>
+      <Name>SlackDriveInfo</Name>
+      <ViewSelectedBy>
+        <TypeName>SlackDrive.SlackDriveInfo</TypeName>
+      </ViewSelectedBy>
+      <TableControl>
+        <TableHeaders>
+          <TableColumnHeader><Label>Name</Label><Width>12</Width></TableColumnHeader>
+          <TableColumnHeader><Label>Workspace</Label><Width>20</Width></TableColumnHeader>
+          <TableColumnHeader><Label>User</Label><Width>15</Width></TableColumnHeader>
+          <TableColumnHeader><Label>URL</Label></TableColumnHeader>
+        </TableHeaders>
+        <TableRowEntries>
+          <TableRowEntry>
+            <TableColumnItems>
+              <TableColumnItem><PropertyName>Name</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>TeamName</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>BotUser</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>WorkspaceUrl</PropertyName></TableColumnItem>
+            </TableColumnItems>
+          </TableRowEntry>
+        </TableRowEntries>
+      </TableControl>
+    </View>
+
+    <!-- SlackChannel -->
+    <View>
+      <Name>SlackChannel</Name>
+      <ViewSelectedBy>
+        <TypeName>SlackDrive.SlackChannel</TypeName>
+      </ViewSelectedBy>
+      <TableControl>
+        <TableHeaders>
+          <TableColumnHeader><Label>Name</Label><Width>25</Width></TableColumnHeader>
+          <TableColumnHeader><Label>Members</Label><Width>8</Width><Alignment>Right</Alignment></TableColumnHeader>
+          <TableColumnHeader><Label>Private</Label><Width>8</Width></TableColumnHeader>
+          <TableColumnHeader><Label>Archived</Label><Width>9</Width></TableColumnHeader>
+          <TableColumnHeader><Label>Topic</Label></TableColumnHeader>
+        </TableHeaders>
+        <TableRowEntries>
+          <TableRowEntry>
+            <TableColumnItems>
+              <TableColumnItem><PropertyName>Name</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>MemberCount</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>IsPrivate</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>IsArchived</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>Topic</PropertyName></TableColumnItem>
+            </TableColumnItems>
+          </TableRowEntry>
+        </TableRowEntries>
+      </TableControl>
+    </View>
+
+    <!-- SlackUser -->
+    <View>
+      <Name>SlackUser</Name>
+      <ViewSelectedBy>
+        <TypeName>SlackDrive.SlackUser</TypeName>
+      </ViewSelectedBy>
+      <TableControl>
+        <TableHeaders>
+          <TableColumnHeader><Label>Name</Label><Width>20</Width></TableColumnHeader>
+          <TableColumnHeader><Label>DisplayName</Label><Width>20</Width></TableColumnHeader>
+          <TableColumnHeader><Label>RealName</Label><Width>25</Width></TableColumnHeader>
+          <TableColumnHeader><Label>Bot</Label><Width>5</Width></TableColumnHeader>
+          <TableColumnHeader><Label>Admin</Label><Width>6</Width></TableColumnHeader>
+          <TableColumnHeader><Label>Email</Label></TableColumnHeader>
+        </TableHeaders>
+        <TableRowEntries>
+          <TableRowEntry>
+            <TableColumnItems>
+              <TableColumnItem><PropertyName>Name</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>DisplayName</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>RealName</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>IsBot</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>IsAdmin</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>Email</PropertyName></TableColumnItem>
+            </TableColumnItems>
+          </TableRowEntry>
+        </TableRowEntries>
+      </TableControl>
+    </View>
+
+    <!-- SlackMessage -->
+    <View>
+      <Name>SlackMessage</Name>
+      <ViewSelectedBy>
+        <TypeName>SlackDrive.SlackMessage</TypeName>
+      </ViewSelectedBy>
+      <TableControl>
+        <TableHeaders>
+          <TableColumnHeader><Label>Time</Label><Width>20</Width></TableColumnHeader>
+          <TableColumnHeader><Label>User</Label><Width>15</Width></TableColumnHeader>
+          <TableColumnHeader><Label>Replies</Label><Width>8</Width><Alignment>Right</Alignment></TableColumnHeader>
+          <TableColumnHeader><Label>Text</Label></TableColumnHeader>
+        </TableHeaders>
+        <TableRowEntries>
+          <TableRowEntry>
+            <TableColumnItems>
+              <TableColumnItem>
+                <ScriptBlock>$_.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")</ScriptBlock>
+              </TableColumnItem>
+              <TableColumnItem><PropertyName>UserName</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>ReplyCount</PropertyName></TableColumnItem>
+              <TableColumnItem>
+                <ScriptBlock>
+                  $text = $_.Text -replace "`n", " "
+                  if ($text.Length -gt 80) { $text.Substring(0, 77) + "..." } else { $text }
+                </ScriptBlock>
+              </TableColumnItem>
+            </TableColumnItems>
+          </TableRowEntry>
+        </TableRowEntries>
+      </TableControl>
+    </View>
+
+    <!-- SlackMessage List View -->
+    <View>
+      <Name>SlackMessageList</Name>
+      <ViewSelectedBy>
+        <TypeName>SlackDrive.SlackMessage</TypeName>
+      </ViewSelectedBy>
+      <ListControl>
+        <ListEntries>
+          <ListEntry>
+            <ListItems>
+              <ListItem><Label>Time</Label><ScriptBlock>$_.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")</ScriptBlock></ListItem>
+              <ListItem><Label>User</Label><PropertyName>UserName</PropertyName></ListItem>
+              <ListItem><Label>Text</Label><PropertyName>Text</PropertyName></ListItem>
+              <ListItem><Label>Replies</Label><PropertyName>ReplyCount</PropertyName></ListItem>
+              <ListItem><Label>Reactions</Label><ScriptBlock>if ($_.Reactions) { ($_.Reactions | ForEach-Object { ":$($_.Name): ($($_.Count))" }) -join " " }</ScriptBlock></ListItem>
+            </ListItems>
+          </ListEntry>
+        </ListEntries>
+      </ListControl>
+    </View>
+
+    <!-- SlackFile -->
+    <View>
+      <Name>SlackFile</Name>
+      <ViewSelectedBy>
+        <TypeName>SlackDrive.SlackFile</TypeName>
+      </ViewSelectedBy>
+      <TableControl>
+        <TableHeaders>
+          <TableColumnHeader><Label>Name</Label><Width>30</Width></TableColumnHeader>
+          <TableColumnHeader><Label>Size</Label><Width>12</Width><Alignment>Right</Alignment></TableColumnHeader>
+          <TableColumnHeader><Label>Type</Label><Width>20</Width></TableColumnHeader>
+          <TableColumnHeader><Label>Created</Label><Width>20</Width></TableColumnHeader>
+          <TableColumnHeader><Label>Title</Label></TableColumnHeader>
+        </TableHeaders>
+        <TableRowEntries>
+          <TableRowEntry>
+            <TableColumnItems>
+              <TableColumnItem><PropertyName>Name</PropertyName></TableColumnItem>
+              <TableColumnItem>
+                <ScriptBlock>
+                  $size = $_.Size
+                  if ($size -ge 1GB) { "{0:N1} GB" -f ($size / 1GB) }
+                  elseif ($size -ge 1MB) { "{0:N1} MB" -f ($size / 1MB) }
+                  elseif ($size -ge 1KB) { "{0:N1} KB" -f ($size / 1KB) }
+                  else { "$size B" }
+                </ScriptBlock>
+              </TableColumnItem>
+              <TableColumnItem><PropertyName>MimeType</PropertyName></TableColumnItem>
+              <TableColumnItem>
+                <ScriptBlock>$_.Created.ToString("yyyy-MM-dd HH:mm")</ScriptBlock>
+              </TableColumnItem>
+              <TableColumnItem><PropertyName>Title</PropertyName></TableColumnItem>
+            </TableColumnItems>
+          </TableRowEntry>
+        </TableRowEntries>
+      </TableControl>
+    </View>
+
+  </ViewDefinitions>
+</Configuration>

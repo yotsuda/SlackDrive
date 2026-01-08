@@ -8,6 +8,7 @@
     Description = 'PowerShell Provider for Slack workspaces. Navigate channels, users, and messages like a file system.'
     PowerShellVersion = '7.0'
     NestedModules = @('SlackDrive.psm1')
+    FormatsToProcess = @('SlackDrive.Format.ps1xml')
     FunctionsToExport = @('New-SlackDrive')
     CmdletsToExport = @('Edit-SDConfig')
     AliasesToExport = @()
