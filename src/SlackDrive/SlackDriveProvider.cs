@@ -15,6 +15,13 @@ public class SlackDriveProvider : NavigationCmdletProvider
         if (drive == null)
             throw new ArgumentNullException(nameof(drive));
 
+        // InitializeDefaultDrives から来た場合は既に SlackDriveInfo
+        if (drive is SlackDriveInfo slackDrive)
+        {
+            return slackDrive;
+        }
+
+        // New-PSDrive コマンドから来た場合
         var dynamicParams = DynamicParameters as SlackDriveParameters;
         if (dynamicParams == null || string.IsNullOrEmpty(dynamicParams.Token))
             throw new ArgumentException("Token parameter is required");

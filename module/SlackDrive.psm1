@@ -1,14 +1,6 @@
 # SlackDrive PowerShell Module
 # Provides Slack workspace navigation as a PowerShell drive
 
-$script:ModuleRoot = $PSScriptRoot
-
-# Import the assembly
-$assemblyPath = Join-Path $script:ModuleRoot 'SlackDrive.dll'
-if (Test-Path $assemblyPath) {
-    Add-Type -Path $assemblyPath
-}
-
 # Helper function to create a new Slack drive
 function New-SlackDrive {
     [CmdletBinding()]
