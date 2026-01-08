@@ -205,6 +205,48 @@ public class SlackDriveProvider : NavigationCmdletProvider
         return false;
     }
 
+    protected override void GetChildNames(string path, ReturnContainers returnContainers)
+    {
+        var normalizedPath = NormalizePath(path);
+        var drive = GetSlackDrive();
+
+        if (string.IsNullOrEmpty(normalizedPath))
+        {
+            WriteItemObject("channels", "channels", true);
+            WriteItemObject("users", "users", true);
+            WriteItemObject("files", "files", true);
+            return;
+        }
+
+        var parts = normalizedPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+        switch (parts[0].ToLower())
+        {
+            case "channels":
+                if (parts.Length == 1)
+                {
+                    var channels = drive.Cache.Channels ?? FetchChannels();
+                    if (drive.Cache.Channels == null) drive.Cache.Channels = channels;
+                    foreach (var channel in channels.Values.OrderBy(c => c.Name))
+                    {
+                        WriteItemObject(channel.Name, $"channels/{channel.Name}", true);
+                    }
+                }
+                break;
+            case "users":
+                if (parts.Length == 1)
+                {
+                    var users = drive.Cache.Users ?? FetchUsers();
+                    if (drive.Cache.Users == null) drive.Cache.Users = users;
+                    foreach (var user in users.Values.OrderBy(u => u.Name))
+                    {
+                        WriteItemObject(user.Name, $"users/{user.Name}", false);
+                    }
+                }
+                break;
+        }
+    }
+
     #endregion
 
     #region Content Operations (Get-Content)
