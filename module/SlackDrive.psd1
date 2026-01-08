@@ -9,7 +9,7 @@
     PowerShellVersion = '7.0'
     NestedModules = @('SlackDrive.psm1')
     FunctionsToExport = @('New-SlackDrive')
-    CmdletsToExport = @()
+    CmdletsToExport = @('Edit-SDConfig')
     AliasesToExport = @()
     PrivateData = @{
         PSData = @{
