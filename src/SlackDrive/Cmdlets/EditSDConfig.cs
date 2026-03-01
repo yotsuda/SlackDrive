@@ -4,8 +4,8 @@ using System.Runtime.InteropServices;
 
 namespace SlackDrive;
 
-[Cmdlet(VerbsData.Edit, "SDConfig")]
-public class EditSDConfigCommand : PSCmdlet
+[Cmdlet(VerbsData.Edit, "SlackConfig")]
+public class EditSlackConfigCommand : PSCmdlet
 {
     [Parameter(Position = 0)]
     [ValidateSet("Default", "Notepad", IgnoreCase = true)]

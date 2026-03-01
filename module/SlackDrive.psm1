@@ -18,10 +18,21 @@ function New-SlackDrive {
         [string]$ClientId,
 
         [Parameter()]
-        [string]$ClientSecret
+        [string]$ClientSecret,
+
+        [Parameter()]
+        [string]$Cookie
     )
 
-    New-PSDrive -Name $Name -PSProvider Slack -Root '/' -Token $Token -Scope Global
+    $params = @{
+        Name       = $Name
+        PSProvider = 'Slack'
+        Root       = '\'
+        Token      = $Token
+        Scope      = 'Global'
+    }
+    if ($Cookie) { $params['Cookie'] = $Cookie }
+    New-PSDrive @params
 }
 
 # Export functions

@@ -12,7 +12,7 @@ public class SlackApiClient : IDisposable
 
     public string Token => _token;
 
-    public SlackApiClient(string token)
+    public SlackApiClient(string token, string? cookie = null)
     {
         _token = token ?? throw new ArgumentNullException(nameof(token));
         _httpClient = new HttpClient
@@ -20,6 +20,8 @@ public class SlackApiClient : IDisposable
             BaseAddress = new Uri("https://slack.com/api/")
         };
         _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        if (!string.IsNullOrEmpty(cookie))
+            _httpClient.DefaultRequestHeaders.Add("Cookie", cookie);
     }
 
     public async Task<JsonDocument> GetAsync(string endpoint, Dictionary<string, string>? queryParams = null)

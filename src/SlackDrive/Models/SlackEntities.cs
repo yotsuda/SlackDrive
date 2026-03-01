@@ -1,7 +1,12 @@
+using System.Text.Json.Serialization;
+
 namespace SlackDrive;
 
 public class SlackChannel
 {
+    [JsonIgnore] public string Path { get; set; } = "";
+    [JsonIgnore] public string Directory { get; set; } = "";
+
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public bool IsPrivate { get; set; }
@@ -15,6 +20,8 @@ public class SlackChannel
 
 public class SlackUser
 {
+    [JsonIgnore] public string Path { get; set; } = "";
+    [JsonIgnore] public string Directory { get; set; } = "";
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public string RealName { get; set; } = "";
@@ -28,6 +35,8 @@ public class SlackUser
 
 public class SlackMessage
 {
+    [JsonIgnore] public string Path { get; set; } = "";
+    [JsonIgnore] public string Directory { get; set; } = "";
     public string Ts { get; set; } = "";
     public string UserId { get; set; } = "";
     public string? UserName { get; set; }
@@ -47,6 +56,8 @@ public class SlackReaction
 
 public class SlackFile
 {
+    [JsonIgnore] public string Path { get; set; } = "";
+    [JsonIgnore] public string Directory { get; set; } = "";
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public string Title { get; set; } = "";

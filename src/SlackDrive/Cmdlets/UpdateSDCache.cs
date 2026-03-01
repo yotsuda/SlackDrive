@@ -2,8 +2,8 @@ using System.Management.Automation;
 
 namespace SlackDrive;
 
-[Cmdlet(VerbsData.Update, "SDCache")]
-public class UpdateSDCacheCommand : PSCmdlet
+[Cmdlet(VerbsData.Update, "SlackCache")]
+public class UpdateSlackCacheCommand : PSCmdlet
 {
     [Parameter(Position = 0, ValueFromPipeline = true)]
     public string? DriveName { get; set; }
@@ -102,7 +102,7 @@ public class UpdateSDCacheCommand : PSCmdlet
                     Topic = ch.TryGetProperty("topic", out var topic) ? topic.GetProperty("value").GetString() : null,
                     Purpose = ch.TryGetProperty("purpose", out var purpose) ? purpose.GetProperty("value").GetString() : null
                 };
-                result[channel.Id] = channel;
+                result[channel.Name] = channel;
             }
 
             cursor = root.TryGetProperty("response_metadata", out var meta) &&
@@ -154,7 +154,7 @@ public class UpdateSDCacheCommand : PSCmdlet
                     IsDeleted = u.TryGetProperty("deleted", out var del) && del.GetBoolean(),
                     TimeZone = u.TryGetProperty("tz", out var tz) ? tz.GetString() : null
                 };
-                result[user.Id] = user;
+                result[user.Name] = user;
             }
 
             cursor = root.TryGetProperty("response_metadata", out var meta) &&

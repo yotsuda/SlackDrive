@@ -52,13 +52,8 @@ public class SlackAuthManager
             }
         }
         
-        // 3. OAuth フローで認証
-        if (IsConfidentialApp)
-        {
-            throw new NotSupportedException("Slack does not support client_credentials grant. Use OAuth flow or direct token.");
-        }
-        
-        if (IsPublicApp)
+        // 3. OAuth フローで認証 (Slack は PKCE + ClientSecret を併用)
+        if (!string.IsNullOrEmpty(_settings.ClientId))
         {
             return AuthorizeWithOAuth();
         }

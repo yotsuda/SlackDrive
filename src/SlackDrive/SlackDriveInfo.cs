@@ -18,7 +18,8 @@ public class SlackDriveInfo : PSDriveInfo
         PSDriveInfo driveInfo,
         SlackApiClient client,
         SlackAuthTestResponse authInfo)
-        : base(driveInfo)
+        : base(driveInfo.Name, driveInfo.Provider, driveInfo.Root,
+               driveInfo.Description, driveInfo.Credential, authInfo.Url)
     {
         Client = client ?? throw new ArgumentNullException(nameof(client));
         TeamId = authInfo.TeamId;
@@ -63,6 +64,9 @@ public class SlackCache
         _channels = null;
         _users = null;
     }
+
+    public void ClearChannels() => _channels = null;
+    public void ClearUsers() => _users = null;
 
     private bool IsCacheValid(DateTime cacheTime) =>
         DateTime.UtcNow - cacheTime < _cacheExpiry;

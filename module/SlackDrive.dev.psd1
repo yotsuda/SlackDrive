@@ -7,6 +7,6 @@
     PowerShellVersion = '7.0'
     FormatsToProcess = @('SlackDrive.Format.ps1xml')
     FunctionsToExport = @()
-    CmdletsToExport = @('Edit-SDConfig')
+    CmdletsToExport = @('Edit-SlackConfig', 'Update-SlackCache')
     AliasesToExport = @()
 }

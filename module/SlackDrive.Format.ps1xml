@@ -28,12 +28,44 @@
       </TableControl>
     </View>
 
+    <!-- FolderInfo (root children) -->
+    <View>
+      <Name>FolderInfo</Name>
+      <ViewSelectedBy>
+        <TypeName>SlackDrive.FolderInfo</TypeName>
+      </ViewSelectedBy>
+      <GroupBy>
+        <PropertyName>Directory</PropertyName>
+        <Label>Directory</Label>
+      </GroupBy>
+      <TableControl>
+        <TableHeaders>
+          <TableColumnHeader><Label>Name</Label><Width>25</Width></TableColumnHeader>
+          <TableColumnHeader><Label>Description</Label></TableColumnHeader>
+        </TableHeaders>
+        <TableRowEntries>
+          <TableRowEntry>
+            <TableColumnItems>
+              <TableColumnItem>
+                <ScriptBlock>"$($PSStyle.FileInfo.Directory)$($_.Name)$($PSStyle.Reset)"</ScriptBlock>
+              </TableColumnItem>
+              <TableColumnItem><PropertyName>Description</PropertyName></TableColumnItem>
+            </TableColumnItems>
+          </TableRowEntry>
+        </TableRowEntries>
+      </TableControl>
+    </View>
+
     <!-- SlackChannel -->
     <View>
       <Name>SlackChannel</Name>
       <ViewSelectedBy>
         <TypeName>SlackDrive.SlackChannel</TypeName>
       </ViewSelectedBy>
+      <GroupBy>
+        <PropertyName>Directory</PropertyName>
+        <Label>Directory</Label>
+      </GroupBy>
       <TableControl>
         <TableHeaders>
           <TableColumnHeader><Label>Name</Label><Width>25</Width></TableColumnHeader>
@@ -62,6 +94,10 @@
       <ViewSelectedBy>
         <TypeName>SlackDrive.SlackUser</TypeName>
       </ViewSelectedBy>
+      <GroupBy>
+        <PropertyName>Directory</PropertyName>
+        <Label>Directory</Label>
+      </GroupBy>
       <TableControl>
         <TableHeaders>
           <TableColumnHeader><Label>Name</Label><Width>20</Width></TableColumnHeader>
@@ -92,6 +128,10 @@
       <ViewSelectedBy>
         <TypeName>SlackDrive.SlackMessage</TypeName>
       </ViewSelectedBy>
+      <GroupBy>
+        <PropertyName>Directory</PropertyName>
+        <Label>Directory</Label>
+      </GroupBy>
       <TableControl>
         <TableHeaders>
           <TableColumnHeader><Label>Time</Label><Width>20</Width></TableColumnHeader>
@@ -146,6 +186,10 @@
       <ViewSelectedBy>
         <TypeName>SlackDrive.SlackFile</TypeName>
       </ViewSelectedBy>
+      <GroupBy>
+        <PropertyName>Directory</PropertyName>
+        <Label>Directory</Label>
+      </GroupBy>
       <TableControl>
         <TableHeaders>
           <TableColumnHeader><Label>Name</Label><Width>30</Width></TableColumnHeader>
