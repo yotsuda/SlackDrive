@@ -10,6 +10,7 @@ public class OpenSlackPageCmdlet : PSCmdlet
 {
     [Parameter(Position = 0, ValueFromPipeline = true, ValueFromPipelineByPropertyName = true)]
     [Alias("PSPath")]
+    [ArgumentCompleter(typeof(SlackPathCompleter))]
     public string? Path { get; set; }
 
     [Parameter]

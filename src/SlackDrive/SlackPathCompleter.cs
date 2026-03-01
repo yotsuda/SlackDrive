@@ -1,35 +1,50 @@
+using System.Collections;
+using System.Collections.Generic;
 using System.Management.Automation;
+using System.Management.Automation.Language;
 
 namespace SlackDrive;
 
 /// <summary>
-/// Slack provider path の Tab 補完。IModuleAssemblyInitializer で自動登録。
-/// チャンネル名・ユーザー名をキャッシュから高速補完し、ワイルドカードもサポート。
+/// モジュール読み込み時に SlackPathCompleter を自動登録。
 /// </summary>
-public class SlackPathCompleter : IModuleAssemblyInitializer, IModuleAssemblyCleanup
+public class SlackModuleInitializer : IModuleAssemblyInitializer, IModuleAssemblyCleanup
 {
     public void OnImport()
     {
         using var ps = PowerShell.Create(RunspaceMode.CurrentRunspace);
         ps.AddScript("""
-            $slackCompleter = {
+            $completer = [SlackDrive.SlackPathCompleter]::new()
+            $cmds = @('Get-ChildItem','Set-Location','Get-Content','Get-Item',
+                       'Push-Location','Resolve-Path','Test-Path','Invoke-Item')
+            $sb = {
                 param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
-                [SlackDrive.SlackPathCompleter]::Complete($wordToComplete)
+                $completer.CompleteArgument($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
             }
-            $cmds = @('Get-ChildItem','Set-Location','Get-Content','Get-Item','Push-Location','Resolve-Path','Test-Path')
-            Register-ArgumentCompleter -CommandName $cmds -ParameterName Path -ScriptBlock $slackCompleter
-            Register-ArgumentCompleter -CommandName $cmds -ParameterName LiteralPath -ScriptBlock $slackCompleter
+            Register-ArgumentCompleter -CommandName $cmds -ParameterName Path -ScriptBlock $sb
+            Register-ArgumentCompleter -CommandName $cmds -ParameterName LiteralPath -ScriptBlock $sb
         """);
         ps.Invoke();
     }
 
     public void OnRemove(PSModuleInfo psModuleInfo) { }
+}
 
-    /// <summary>エントリーポイント (ScriptBlock から呼ばれる)</summary>
-    public static List<CompletionResult> Complete(string wordToComplete)
+/// <summary>
+/// Slack provider path の Tab 補完。IArgumentCompleter 実装。
+/// チャンネル名・ユーザー名・メッセージをキャッシュ/API から補完し、ワイルドカードもサポート。
+/// </summary>
+public class SlackPathCompleter : IArgumentCompleter
+{
+    public IEnumerable<CompletionResult> CompleteArgument(
+        string commandName,
+        string parameterName,
+        string wordToComplete,
+        CommandAst commandAst,
+        IDictionary fakeBoundParameters)
     {
         try { return CompleteInternal(wordToComplete ?? ""); }
-        catch { return new(); }
+        catch { return []; }
     }
 
     private static List<CompletionResult> CompleteInternal(string wordToComplete)
@@ -55,7 +70,7 @@ public class SlackPathCompleter : IModuleAssemblyInitializer, IModuleAssemblyCle
             ps.Commands.Clear();
 
             if (currentDrive?.Provider?.Name != "Slack")
-                return new(); // Slack ドライブでなければスキップ
+                return []; // Slack ドライブでなければスキップ
 
             driveName = currentDrive.Name;
 
@@ -75,7 +90,7 @@ public class SlackPathCompleter : IModuleAssemblyInitializer, IModuleAssemblyCle
         var driveObj = ps.Invoke().FirstOrDefault()?.BaseObject;
         ps.Commands.Clear();
 
-        if (driveObj is not SlackDriveInfo slackDrive) return new();
+        if (driveObj is not SlackDriveInfo slackDrive) return [];
 
         // ── パス解析 ──
         var normalized = pathInDrive.TrimStart('/');
@@ -84,12 +99,10 @@ public class SlackPathCompleter : IModuleAssemblyInitializer, IModuleAssemblyCle
         // 入力テキストの「最後のセパレータまで」を補完テキストの prefix にする
         var lastSep = Math.Max(wordToComplete.LastIndexOf('\\'), wordToComplete.LastIndexOf('/'));
         var inputPrefix = lastSep >= 0 ? wordToComplete[..(lastSep + 1)] : "";
-        var filterText = lastSep >= 0 ? wordToComplete[(lastSep + 1)..] : wordToComplete;
         // ドライブプレフィックスのみ ("UiPath:") の場合
         if (colonIdx >= 0 && lastSep < colonIdx)
         {
             inputPrefix = wordToComplete[..(colonIdx + 1)] + "\\";
-            filterText = wordToComplete[(colonIdx + 1)..].TrimStart('\\', '/');
         }
 
         var results = new List<CompletionResult>();
@@ -108,9 +121,10 @@ public class SlackPathCompleter : IModuleAssemblyInitializer, IModuleAssemblyCle
 
         var category = segments[0].ToLower();
 
-        // ── Channels 配下 ──
+        // ── Channels 配下 (チャンネル名) ──
         if (category == "channels" &&
-            ((segments.Length == 1 && normalized.EndsWith('/')) || segments.Length == 2))
+            ((segments.Length == 1 && normalized.EndsWith('/')) || segments.Length == 2)
+            && !(segments.Length == 2 && normalized.EndsWith('/')))
         {
             var channels = GetChannels(slackDrive);
             if (channels == null) return results;
@@ -122,6 +136,40 @@ public class SlackPathCompleter : IModuleAssemblyInitializer, IModuleAssemblyCle
             {
                 if (pattern.IsMatch(ch.Name))
                     results.Add(MakeResult(inputPrefix + ch.Name, ch.Name, CompletionResultType.ProviderContainer));
+            }
+        }
+        // ── Channels/<channel>/messages (メッセージ) ──
+        else if (category == "channels" && segments.Length >= 2 &&
+                 (segments.Length == 3 || (segments.Length == 2 && normalized.EndsWith('/'))))
+        {
+            var channelName = segments[1];
+            var channels = GetChannels(slackDrive);
+            if (channels != null && channels.TryGetValue(channelName, out var channel))
+            {
+                var messages = FetchRecentMessages(slackDrive, channel.Id);
+                if (messages != null)
+                {
+                    var users = GetUsers(slackDrive);
+                    var filter = segments.Length == 3 ? segments[2] : "";
+                    var pattern = MakeWildcard(filter);
+
+                    foreach (var msg in messages)
+                    {
+                        var ts = msg.Ts;
+                        if (!pattern.IsMatch(ts)) continue;
+
+                        var userName = ResolveUserName(users, msg.UserId);
+                        var text = msg.Text.Replace("\n", " ");
+                        if (text.Length > 50) text = text[..47] + "...";
+
+                        var listText = $"{msg.Timestamp:MM-dd HH:mm} @{userName}: {text}";
+                        results.Add(new CompletionResult(
+                            QuoteIfNeeded(inputPrefix + ts),
+                            listText,
+                            CompletionResultType.ProviderItem,
+                            $"{msg.Timestamp:yyyy-MM-dd HH:mm} @{userName}\n{msg.Text}"));
+                    }
+                }
             }
         }
         // ── Users 配下 ──
@@ -155,12 +203,22 @@ public class SlackPathCompleter : IModuleAssemblyInitializer, IModuleAssemblyCle
         return new WildcardPattern(filter + "*", WildcardOptions.IgnoreCase);
     }
 
+    private static string QuoteIfNeeded(string text)
+    {
+        if (text.IndexOfAny([' ', '(', ')', '{', '}', '[', ']', '&', '#', ';', '@']) >= 0)
+            return "'" + text + "'";
+        return text;
+    }
+
     private static CompletionResult MakeResult(string completionText, string listItemText, CompletionResultType type)
     {
-        // スペースや特殊文字を含むパスはクォート
-        if (completionText.IndexOfAny([' ', '(', ')', '{', '}', '[', ']', '&', '#', ';', '@']) >= 0)
-            completionText = "'" + completionText + "'";
-        return new CompletionResult(completionText, listItemText, type, listItemText);
+        return new CompletionResult(QuoteIfNeeded(completionText), listItemText, type, listItemText);
+    }
+
+    private static string ResolveUserName(Dictionary<string, SlackUser>? users, string userId)
+    {
+        if (users == null) return userId;
+        return users.Values.FirstOrDefault(x => x.Id == userId)?.Name ?? userId;
     }
 
     private static Dictionary<string, SlackChannel>? GetChannels(SlackDriveInfo drive)
@@ -205,5 +263,45 @@ public class SlackPathCompleter : IModuleAssemblyInitializer, IModuleAssemblyCle
         users = cache.Users.ToDictionary(u => u.Name);
         drive.Cache.Users = users;
         return users;
+    }
+
+    private static List<SlackMessage>? FetchRecentMessages(SlackDriveInfo drive, string channelId)
+    {
+        try
+        {
+            var queryParams = new Dictionary<string, string>
+            {
+                ["channel"] = channelId,
+                ["limit"] = "20"
+            };
+
+            var doc = drive.Client.GetAsync("conversations.history", queryParams).GetAwaiter().GetResult();
+            var root = doc.RootElement;
+
+            if (!root.GetProperty("ok").GetBoolean())
+                return null;
+
+            var messages = new List<SlackMessage>();
+            foreach (var m in root.GetProperty("messages").EnumerateArray())
+            {
+                var userId = m.TryGetProperty("user", out var u) ? u.GetString() ?? "" : "";
+                var ts = m.GetProperty("ts").GetString() ?? "";
+
+                messages.Add(new SlackMessage
+                {
+                    Ts = ts,
+                    UserId = userId,
+                    Text = m.GetProperty("text").GetString() ?? "",
+                    Timestamp = DateTimeOffset.FromUnixTimeSeconds(
+                        (long)double.Parse(ts.Split('.')[0])).DateTime,
+                    ReplyCount = m.TryGetProperty("reply_count", out var rc) ? rc.GetInt32() : 0
+                });
+            }
+            return messages;
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

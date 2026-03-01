@@ -1,5 +1,7 @@
+using System.Collections;
 using System.Diagnostics;
 using System.Management.Automation;
+using System.Management.Automation.Language;
 using System.Management.Automation.Provider;
 using System.Collections.ObjectModel;
 using System.Text;
@@ -221,8 +223,14 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         }
 
         var parts = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        var pagination = DynamicParameters as SlackPaginationParameters;
-        int first = pagination?.First ?? 20;
+        var parameters = DynamicParameters as SlackPaginationParameters;
+        int first = parameters?.First ?? 20;
+
+        // -Reload: キャッシュをクリアして API から再取得
+        if (parameters?.Reload.IsPresent == true)
+        {
+            Drive.Cache.Clear();
+        }
 
         try
         {
@@ -248,6 +256,14 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         {
             WriteError(new ErrorRecord(ex, "SlackApiError",
                 ErrorCategory.ConnectionError, path));
+        }
+
+        // -ExportCsv: 結果を CSV に出力
+        if (!string.IsNullOrEmpty(parameters?.ExportCsv))
+        {
+            var csvPath = ExportChildItemsCsv(normalized, parameters.ExportCsv, parameters.CsvEncoding, first);
+            if (csvPath != null)
+                WriteWarning($"CSV exported: {csvPath}");
         }
     }
 
@@ -791,6 +807,60 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         return users.Values.FirstOrDefault(x => x.Id == userId)?.Name ?? userId;
     }
 
+    private string? ExportChildItemsCsv(string normalizedPath, string exportCsv, Encoding? csvEncoding, int first)
+    {
+        var encoding = csvEncoding ?? new UTF8Encoding(true);
+        var parts = normalizedPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var category = parts[0].ToLower();
+
+        // パスを解決
+        var csvPath = exportCsv;
+        if (!Path.IsPathRooted(csvPath))
+        {
+            try
+            {
+                var resolved = SessionState.Path.GetUnresolvedProviderPathFromPSPath(csvPath);
+                csvPath = resolved;
+            }
+            catch { /* use as-is */ }
+        }
+
+        if (Directory.Exists(csvPath))
+            csvPath = Path.Combine(csvPath, $"slack-{category}.csv");
+
+        using var writer = new StreamWriter(csvPath, false, encoding);
+
+        switch (category)
+        {
+            case "channels":
+                if (parts.Length == 1)
+                {
+                    writer.WriteLine("Name,Id,IsPrivate,IsArchived,IsMember,MemberCount,Topic,Purpose");
+                    foreach (var ch in EnsureChannelsLoaded().Values.OrderBy(c => c.Name))
+                        writer.WriteLine($"{Csv(ch.Name)},{Csv(ch.Id)},{ch.IsPrivate},{ch.IsArchived},{ch.IsMember},{ch.MemberCount},{Csv(ch.Topic)},{Csv(ch.Purpose)}");
+                }
+                break;
+            case "users":
+                if (parts.Length == 1)
+                {
+                    writer.WriteLine("Name,Id,DisplayName,RealName,IsBot,IsAdmin,IsDeleted,Email");
+                    foreach (var u in EnsureUsersLoaded().Values.OrderBy(u => u.Name))
+                        writer.WriteLine($"{Csv(u.Name)},{Csv(u.Id)},{Csv(u.DisplayName)},{Csv(u.RealName)},{u.IsBot},{u.IsAdmin},{u.IsDeleted},{Csv(u.Email)}");
+                }
+                break;
+        }
+
+        return csvPath;
+
+        static string Csv(string? value)
+        {
+            if (string.IsNullOrEmpty(value)) return "";
+            if (value.Contains(',') || value.Contains('"') || value.Contains('\n'))
+                return "\"" + value.Replace("\"", "\"\"") + "\"";
+            return value;
+        }
+    }
+
     #endregion
 
     #region IContentCmdletProvider
@@ -918,12 +988,60 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
 }
 
 /// <summary>
-/// Dynamic parameters for Get-ChildItem (-First).
+/// Dynamic parameters for Get-ChildItem.
 /// </summary>
 public class SlackPaginationParameters
 {
     [Parameter]
     public int? First { get; set; }
+
+    [Parameter]
+    public SwitchParameter Reload { get; set; }
+
+    [Parameter]
+    public string? ExportCsv { get; set; }
+
+    [Parameter]
+    [ArgumentCompleter(typeof(EncodingCompleter))]
+    [EncodingArgumentTransformation]
+    public Encoding? CsvEncoding { get; set; }
+}
+
+/// <summary>
+/// Encoding 名のタブ補完。
+/// </summary>
+public class EncodingCompleter : IArgumentCompleter
+{
+    public IEnumerable<CompletionResult> CompleteArgument(
+        string commandName, string parameterName, string wordToComplete,
+        CommandAst commandAst, IDictionary fakeBoundParameters)
+    {
+        var pattern = string.IsNullOrEmpty(wordToComplete)
+            ? new WildcardPattern("*")
+            : new WildcardPattern(wordToComplete + "*", WildcardOptions.IgnoreCase);
+
+        foreach (var ei in Encoding.GetEncodings().Where(e => pattern.IsMatch(e.Name)).OrderBy(e => e.Name))
+        {
+            yield return new CompletionResult(ei.Name, ei.Name, CompletionResultType.ParameterValue,
+                $"CodePage:{ei.CodePage}  {ei.DisplayName}");
+        }
+    }
+}
+
+/// <summary>
+/// Encoding 名文字列を System.Text.Encoding オブジェクトに変換。
+/// </summary>
+public class EncodingArgumentTransformationAttribute : ArgumentTransformationAttribute
+{
+    public override object Transform(EngineIntrinsics engineIntrinsics, object inputData)
+    {
+        if (inputData is string encodingName)
+        {
+            try { return Encoding.GetEncoding(encodingName); }
+            catch (ArgumentException) { throw new ArgumentException($"Invalid encoding: {encodingName}"); }
+        }
+        return inputData;
+    }
 }
 
 public class SlackDriveParameters
