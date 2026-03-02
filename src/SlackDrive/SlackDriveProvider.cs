@@ -6,6 +6,7 @@ using System.Management.Automation.Provider;
 using System.Collections.ObjectModel;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace SlackDrive;
 
@@ -347,8 +348,10 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
                 if (channel == null) return null;
                 if (parts.Length == 2)
                     return $"{baseUrl}/archives/{channel.Id}";
-                // Channels/<channel>/<ts> → message permalink
-                var tsForUrl = parts[2].Replace(".", "");
+                // Channels/<channel>/<displayName> → message permalink
+                var ts = ResolveMessageIdentifier(channel.Id, parts[2]);
+                if (ts == null) return null;
+                var tsForUrl = ts.Replace(".", "");
                 return $"{baseUrl}/archives/{channel.Id}/p{tsForUrl}";
             case "users" when parts.Length >= 2:
                 var user = GetUserByName(parts[1]);
@@ -451,25 +454,33 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         var users = EnsureUsersLoaded();
 
         var directory = EnsureDrivePrefix(path);
+        var messages = new List<SlackMessage>();
         foreach (var m in root.GetProperty("messages").EnumerateArray())
         {
             var userId = m.TryGetProperty("user", out var u) ? u.GetString() ?? "" : "";
             var ts = m.GetProperty("ts").GetString() ?? "";
 
-            var message = new SlackMessage
+            var rawText = m.GetProperty("text").GetString() ?? "";
+            messages.Add(new SlackMessage
             {
                 Ts = ts,
                 UserId = userId,
                 UserName = users.Values.FirstOrDefault(x => x.Id == userId)?.Name,
-                Text = m.GetProperty("text").GetString() ?? "",
+                Text = ResolveSlackMentions(rawText, users),
                 Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)double.Parse(ts.Split('.')[0])).DateTime,
                 ThreadTs = m.TryGetProperty("thread_ts", out var tts) ? tts.GetString() : null,
                 ReplyCount = m.TryGetProperty("reply_count", out var rc) ? rc.GetInt32() : 0,
-                Path = EnsureDrivePrefix(MakePath(path, ts)),
                 Directory = directory
-            };
+            });
+        }
 
-            WriteItemObject(message, MakePath(path, ts), isContainer: false);
+        // 短縮 ts + 著者 + 冒頭テキストで表示名を生成
+        var tsValues = messages.Select(m => m.Ts).ToList();
+        foreach (var message in messages)
+        {
+            var displayName = BuildMessageDisplayName(message, tsValues);
+            message.Path = EnsureDrivePrefix(MakePath(path, displayName));
+            WriteItemObject(message, MakePath(path, displayName), isContainer: false);
         }
     }
 
@@ -807,6 +818,39 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         return users.Values.FirstOrDefault(x => x.Id == userId)?.Name ?? userId;
     }
 
+    /// <summary>
+    /// メッセージ本文中の Slack メンション記法を表示名に変換。
+    /// <![CDATA[<@U03JURUCFRT>]]> → @username, <![CDATA[<#C1234|channel>]]> → #channel
+    /// </summary>
+    private string ResolveSlackMentions(string text, Dictionary<string, SlackUser> users)
+    {
+        // <@USERID> or <@USERID|name> (U=user, W=workspace user)
+        text = Regex.Replace(text, @"<@([UW][A-Z0-9]+)(?:\|([^>]+))?>", m =>
+        {
+            var id = m.Groups[1].Value;
+            var fallback = m.Groups[2].Success ? m.Groups[2].Value : null;
+            var name = users.Values.FirstOrDefault(x => x.Id == id)?.DisplayName
+                    ?? users.Values.FirstOrDefault(x => x.Id == id)?.Name
+                    ?? fallback ?? id;
+            return $"@{name}";
+        });
+
+        // <#CHANNELID|channel-name>
+        text = Regex.Replace(text, @"<#C[A-Z0-9]+\|([^>]+)>", m => $"#{m.Groups[1].Value}");
+
+        // <!subteam^ID|@handle> (user groups)
+        text = Regex.Replace(text, @"<!subteam\^[A-Z0-9]+\|@([^>]+)>", m => $"@{m.Groups[1].Value}");
+
+        // <!here>, <!channel>, <!everyone>
+        text = Regex.Replace(text, @"<!(\w+)(?:\|[^>]*)?>", m => $"@{m.Groups[1].Value}");
+
+        // <URL> or <URL|label>
+        text = Regex.Replace(text, @"<(https?://[^|>]+)(?:\|([^>]+))?>", m =>
+            m.Groups[2].Success ? m.Groups[2].Value : m.Groups[1].Value);
+
+        return text;
+    }
+
     private string? ExportChildItemsCsv(string normalizedPath, string exportCsv, Encoding? csvEncoding, int first)
     {
         var encoding = csvEncoding ?? new UTF8Encoding(true);
@@ -861,6 +905,99 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         }
     }
 
+    /// <summary>
+    /// メッセージの表示名を生成: {shortTs}_{MMdd_HHmm}_{author}_{sentence}
+    /// </summary>
+    private static string BuildMessageDisplayName(SlackMessage msg, List<string> allTs)
+    {
+        var shortTs = ComputeShortTs(msg.Ts, allTs);
+        var date = msg.Timestamp.ToString("MMdd_HHmm");
+        var author = msg.UserName ?? msg.UserId;
+        var sentence = SanitizeForPath(FirstSentence(msg.Text, 30));
+
+        return $"{shortTs}_{date}_{author}_{sentence}";
+    }
+
+    /// <summary>
+    /// git の短縮ハッシュ方式で、一意になる最短の ts サフィックスを返す (最低4桁)。
+    /// </summary>
+    private static string ComputeShortTs(string ts, List<string> allTs)
+    {
+        // ドットを除去した数字列で比較
+        var normalized = ts.Replace(".", "");
+        var others = allTs.Where(t => t != ts).Select(t => t.Replace(".", "")).ToList();
+
+        for (int len = 4; len < normalized.Length; len++)
+        {
+            var suffix = normalized[^len..];
+            if (others.All(o => !o.EndsWith(suffix)))
+                return suffix;
+        }
+        return normalized;
+    }
+
+    /// <summary>
+    /// テキストの冒頭一文を取得 (maxLen 文字で切る)。
+    /// </summary>
+    private static string FirstSentence(string text, int maxLen)
+    {
+        var line = text.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+        if (line.Length > maxLen)
+            line = line[..maxLen];
+        return line;
+    }
+
+    /// <summary>
+    /// パスに使えない文字を除去/置換。
+    /// </summary>
+    private static string SanitizeForPath(string text)
+    {
+        // Windows パス不正文字 + プロバイダーセパレータ
+        var invalid = new HashSet<char>(Path.GetInvalidFileNameChars()) { '/', '\\', ':' };
+        var sb = new StringBuilder(text.Length);
+        foreach (var c in text)
+        {
+            if (invalid.Contains(c)) continue;
+            sb.Append(c);
+        }
+        return sb.ToString().Trim();
+    }
+
+    /// <summary>
+    /// メッセージ識別子（生 ts または表示名）から元の ts を解決する。
+    /// 生 ts: "1765763994.024389" → そのまま返す
+    /// 表示名: "3994_0215_1030_author_text" → 短縮 ts のサフィックスマッチで特定
+    /// </summary>
+    private string? ResolveMessageIdentifier(string channelId, string identifier)
+    {
+        // 生の ts 形式 (数字.数字) ならそのまま返す
+        if (Regex.IsMatch(identifier, @"^\d+\.\d+$"))
+            return identifier;
+
+        // 表示名の先頭部分 (最初の _ まで) が短縮 ts
+        var firstUnderscore = identifier.IndexOf('_');
+        var shortTs = firstUnderscore > 0 ? identifier[..firstUnderscore] : identifier;
+
+        var queryParams = new Dictionary<string, string>
+        {
+            ["channel"] = channelId,
+            ["limit"] = "30"
+        };
+
+        var doc = Drive.Client.GetAsync("conversations.history", queryParams).GetAwaiter().GetResult();
+        var root = doc.RootElement;
+
+        if (!root.GetProperty("ok").GetBoolean()) return null;
+
+        foreach (var m in root.GetProperty("messages").EnumerateArray())
+        {
+            var ts = m.GetProperty("ts").GetString() ?? "";
+            if (ts.Replace(".", "").EndsWith(shortTs))
+                return ts;
+        }
+        return null;
+    }
+
     #endregion
 
     #region IContentCmdletProvider
@@ -874,11 +1011,13 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
             throw new InvalidOperationException($"Cannot read content from path: {path}");
 
         var channelName = parts[1];
-        var ts = parts[2];
-
         var channel = GetChannelByName(channelName);
         if (channel == null)
             throw new ItemNotFoundException($"Channel not found: {channelName}");
+
+        var ts = ResolveMessageIdentifier(channel.Id, parts[2]);
+        if (ts == null)
+            throw new ItemNotFoundException($"Message not found: {parts[2]}");
 
         var messages = FetchThread(channel.Id, ts);
         var markdown = BuildMarkdown(channelName, channel.Id, messages);
@@ -924,12 +1063,13 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
             var userId = m.TryGetProperty("user", out var u) ? u.GetString() ?? "" : "";
             var msgTs = m.GetProperty("ts").GetString() ?? "";
 
+            var rawText = m.GetProperty("text").GetString() ?? "";
             messages.Add(new SlackMessage
             {
                 Ts = msgTs,
                 UserId = userId,
                 UserName = ResolveUserName(users, userId),
-                Text = m.GetProperty("text").GetString() ?? "",
+                Text = ResolveSlackMentions(rawText, users),
                 Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)double.Parse(msgTs.Split('.')[0])).DateTime,
                 ThreadTs = m.TryGetProperty("thread_ts", out var tts) ? tts.GetString() : null,
                 ReplyCount = m.TryGetProperty("reply_count", out var rc) ? rc.GetInt32() : 0

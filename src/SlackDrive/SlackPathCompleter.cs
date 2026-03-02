@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Management.Automation;
 using System.Management.Automation.Language;
+using System.Text.RegularExpressions;
 
 namespace SlackDrive;
 
@@ -10,23 +11,7 @@ namespace SlackDrive;
 /// </summary>
 public class SlackModuleInitializer : IModuleAssemblyInitializer, IModuleAssemblyCleanup
 {
-    public void OnImport()
-    {
-        using var ps = PowerShell.Create(RunspaceMode.CurrentRunspace);
-        ps.AddScript("""
-            $completer = [SlackDrive.SlackPathCompleter]::new()
-            $cmds = @('Get-ChildItem','Set-Location','Get-Content','Get-Item',
-                       'Push-Location','Resolve-Path','Test-Path','Invoke-Item')
-            $sb = {
-                param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
-                $completer.CompleteArgument($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
-            }
-            Register-ArgumentCompleter -CommandName $cmds -ParameterName Path -ScriptBlock $sb
-            Register-ArgumentCompleter -CommandName $cmds -ParameterName LiteralPath -ScriptBlock $sb
-        """);
-        ps.Invoke();
-    }
-
+    public void OnImport() { }
     public void OnRemove(PSModuleInfo psModuleInfo) { }
 }
 
@@ -83,6 +68,17 @@ public class SlackPathCompleter : IArgumentCompleter
                 ? wordToComplete.Replace('\\', '/')
                 : currentDir + "/" + wordToComplete.Replace('\\', '/');
         }
+
+        // ./ や ../ を正規化
+        var trailingSlash = pathInDrive.EndsWith('/');
+        var cleanSegments = new List<string>();
+        foreach (var seg in pathInDrive.Split('/', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (seg == ".") continue;
+            else if (seg == ".." && cleanSegments.Count > 0) cleanSegments.RemoveAt(cleanSegments.Count - 1);
+            else if (seg != "..") cleanSegments.Add(seg);
+        }
+        pathInDrive = string.Join("/", cleanSegments) + (trailingSlash ? "/" : "");
 
         // Slack ドライブか確認
         ps.AddCommand("Get-PSDrive").AddParameter("Name", driveName)
@@ -159,7 +155,8 @@ public class SlackPathCompleter : IArgumentCompleter
                         if (!pattern.IsMatch(ts)) continue;
 
                         var userName = ResolveUserName(users, msg.UserId);
-                        var text = msg.Text.Replace("\n", " ");
+                        var resolvedText = ResolveMentions(msg.Text, users);
+                        var text = resolvedText.Replace("\n", " ");
                         if (text.Length > 50) text = text[..47] + "...";
 
                         var listText = $"{msg.Timestamp:MM-dd HH:mm} @{userName}: {text}";
@@ -167,7 +164,7 @@ public class SlackPathCompleter : IArgumentCompleter
                             QuoteIfNeeded(inputPrefix + ts),
                             listText,
                             CompletionResultType.ProviderItem,
-                            $"{msg.Timestamp:yyyy-MM-dd HH:mm} @{userName}\n{msg.Text}"));
+                            $"{msg.Timestamp:yyyy-MM-dd HH:mm} @{userName}\n{resolvedText}"));
                     }
                 }
             }
@@ -219,6 +216,25 @@ public class SlackPathCompleter : IArgumentCompleter
     {
         if (users == null) return userId;
         return users.Values.FirstOrDefault(x => x.Id == userId)?.Name ?? userId;
+    }
+
+    private static string ResolveMentions(string text, Dictionary<string, SlackUser>? users)
+    {
+        text = Regex.Replace(text, @"<@([UW][A-Z0-9]+)(?:\|([^>]+))?>", m =>
+        {
+            var id = m.Groups[1].Value;
+            var fallback = m.Groups[2].Success ? m.Groups[2].Value : null;
+            var name = users?.Values.FirstOrDefault(x => x.Id == id)?.DisplayName
+                    ?? users?.Values.FirstOrDefault(x => x.Id == id)?.Name
+                    ?? fallback ?? id;
+            return $"@{name}";
+        });
+        text = Regex.Replace(text, @"<#C[A-Z0-9]+\|([^>]+)>", m => $"#{m.Groups[1].Value}");
+        text = Regex.Replace(text, @"<!subteam\^[A-Z0-9]+\|@([^>]+)>", m => $"@{m.Groups[1].Value}");
+        text = Regex.Replace(text, @"<!(\w+)(?:\|[^>]*)?>", m => $"@{m.Groups[1].Value}");
+        text = Regex.Replace(text, @"<(https?://[^|>]+)(?:\|([^>]+))?>", m =>
+            m.Groups[2].Success ? m.Groups[2].Value : m.Groups[1].Value);
+        return text;
     }
 
     private static Dictionary<string, SlackChannel>? GetChannels(SlackDriveInfo drive)
