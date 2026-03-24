@@ -28,28 +28,16 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         if (drive == null)
             throw new ArgumentNullException(nameof(drive));
 
-        // InitializeDefaultDrives から来た場合は既に SlackDriveInfo
+        // ImportSlackConfig / 直接渡しから来た場合は既に SlackDriveInfo
         if (drive is SlackDriveInfo slackDrive)
             return slackDrive;
 
-        // New-PSDrive コマンドから来た場合
+        // New-PSDrive コマンドから来た場合（Token 直接指定）
         var dynamicParams = DynamicParameters as SlackDriveParameters;
         if (dynamicParams == null || string.IsNullOrEmpty(dynamicParams.Token))
             throw new ArgumentException("Token parameter is required");
 
-        var client = new SlackApiClient(dynamicParams.Token, dynamicParams.Cookie);
-
-        try
-        {
-            var authInfo = client.TestAuthAsync().GetAwaiter().GetResult();
-            WriteVerbose($"Connected to workspace: {authInfo.Team} as {authInfo.User}");
-            return new SlackDriveInfo(drive, client, authInfo);
-        }
-        catch (Exception ex)
-        {
-            client.Dispose();
-            throw new InvalidOperationException($"Failed to authenticate: {ex.Message}", ex);
-        }
+        return new SlackDriveInfo(drive, dynamicParams.Token, dynamicParams.Cookie);
     }
 
     protected override object NewDriveDynamicParameters() => new SlackDriveParameters();
@@ -57,61 +45,14 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
     protected override PSDriveInfo RemoveDrive(PSDriveInfo drive)
     {
         if (drive is SlackDriveInfo slackDrive)
-            slackDrive.Client.Dispose();
+            slackDrive.Dispose();
         return drive;
     }
 
     protected override Collection<PSDriveInfo>? InitializeDefaultDrives()
     {
         SlackDriveConfigManager.EnsureDefaultConfigExists();
-
-        var config = SlackDriveConfigManager.LoadConfig();
-        if (config?.PSDrives == null || config.PSDrives.Count == 0)
-            return base.InitializeDefaultDrives();
-
-        var drives = new Collection<PSDriveInfo>();
-
-        foreach (var driveSettings in config.PSDrives)
-        {
-            driveSettings.CascadeFromGlobalSettings(config);
-
-            if (driveSettings.Enabled != true) continue;
-            if (string.IsNullOrEmpty(driveSettings.Name)) continue;
-
-            // Token も ClientId もない場合はスキップ
-            if (string.IsNullOrEmpty(driveSettings.Token) && string.IsNullOrEmpty(driveSettings.ClientId))
-            {
-                WriteWarning($"\"{driveSettings.Name}\": Neither Token nor ClientId specified. Skipping.");
-                continue;
-            }
-
-            try
-            {
-                var authManager = new SlackAuthManager(driveSettings);
-                string token = authManager.GetAccessToken();
-
-                var client = new SlackApiClient(token);
-                var authInfo = client.TestAuthAsync().GetAwaiter().GetResult();
-
-                var driveInfo = new PSDriveInfo(
-                    driveSettings.Name,
-                    ProviderInfo,
-                    @"\",
-                    driveSettings.Description ?? $"Slack workspace: {authInfo.Team}",
-                    null);
-
-                var slackDrive = new SlackDriveInfo(driveInfo, client, authInfo);
-                drives.Add(slackDrive);
-
-                WriteVerbose($"Mounted {driveSettings.Name}: -> {authInfo.Team} ({authInfo.Url})");
-            }
-            catch (Exception ex)
-            {
-                WriteWarning($"\"{driveSettings.Name}\": Failed to connect - {ex.Message}");
-            }
-        }
-
-        return drives;
+        return base.InitializeDefaultDrives();
     }
 
     #endregion
@@ -391,7 +332,18 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         if (Force)
             Drive.Cache.ClearChannels();
 
-        var channels = EnsureChannelsLoaded();
+        var showAll = (DynamicParameters as SlackPaginationParameters)?.All.IsPresent == true;
+
+        Dictionary<string, SlackChannel> channels;
+        if (showAll && Drive.IsUserToken)
+        {
+            // -All: 全チャンネルを取得（遅い）
+            channels = FetchChannels();
+        }
+        else
+        {
+            channels = EnsureChannelsLoaded();
+        }
 
         var directory = EnsureDrivePrefix(path);
         foreach (var channel in channels.Values.OrderBy(c => c.Name))
@@ -451,7 +403,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
             throw new InvalidOperationException($"Failed to get messages: {error}");
         }
 
-        var users = EnsureUsersLoaded();
+        var users = Drive.Cache.Users;
 
         var directory = EnsureDrivePrefix(path);
         var messages = new List<SlackMessage>();
@@ -460,13 +412,23 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
             var userId = m.TryGetProperty("user", out var u) ? u.GetString() ?? "" : "";
             var ts = m.GetProperty("ts").GetString() ?? "";
 
+            // user_profile からユーザー名を取得（users.list 不要）
+            string? userName = null;
+            if (m.TryGetProperty("user_profile", out var up))
+            {
+                userName = up.TryGetProperty("display_name", out var dn) && !string.IsNullOrEmpty(dn.GetString())
+                    ? dn.GetString()
+                    : up.TryGetProperty("name", out var nm) ? nm.GetString() : null;
+            }
+            userName ??= users?.Values.FirstOrDefault(x => x.Id == userId)?.Name;
+
             var rawText = m.GetProperty("text").GetString() ?? "";
             messages.Add(new SlackMessage
             {
                 Ts = ts,
                 UserId = userId,
-                UserName = users.Values.FirstOrDefault(x => x.Id == userId)?.Name,
-                Text = ResolveSlackMentions(rawText, users),
+                UserName = userName,
+                Text = users != null ? ResolveSlackMentions(rawText, users) : rawText,
                 Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)double.Parse(ts.Split('.')[0])).DateTime,
                 ThreadTs = m.TryGetProperty("thread_ts", out var tts) ? tts.GetString() : null,
                 ReplyCount = m.TryGetProperty("reply_count", out var rc) ? rc.GetInt32() : 0,
@@ -685,20 +647,9 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         var channels = Drive.Cache.Channels;
         if (channels != null) return channels;
 
-        // ファイルキャッシュから読み込み (自 TeamId → 他キャッシュファイルの順)
-        channels = LoadChannelsFromFileCache(Drive.TeamId);
-        if (channels != null)
-        {
-            Drive.Cache.Channels = channels;
-            return channels;
-        }
-
         try
         {
-            channels = FetchChannels();
-            Drive.Cache.Channels = channels;
-            SlackCacheManager.SaveChannels(Drive.TeamId, channels.Values);
-            return channels;
+            channels = Drive.IsUserToken ? FetchMyChannels() : FetchChannels();
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("enterprise_is_restricted"))
         {
@@ -707,26 +658,80 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
             if (bootData.Channels is { Count: > 0 })
             {
                 channels = bootData.Channels;
-                Drive.Cache.Channels = channels;
-                SlackCacheManager.SaveChannels(Drive.TeamId, channels.Values);
-                // Users も同時に取得できていればキャッシュ
                 if (bootData.Users is { Count: > 0 })
-                {
                     Drive.Cache.Users = bootData.Users;
-                    SlackCacheManager.SaveUsers(Drive.TeamId, bootData.Users.Values);
+            }
+            else
+            {
+                throw;
+            }
+        }
+
+        Drive.Cache.Channels = channels;
+        return channels;
+    }
+
+    /// <summary>
+    /// users.conversations で自分が参加しているチャンネルのみ取得。
+    /// ユーザートークン向け。高速。
+    /// </summary>
+    private Dictionary<string, SlackChannel> FetchMyChannels()
+    {
+        var result = new Dictionary<string, SlackChannel>();
+        string? cursor = null;
+
+        while (true)
+        {
+            var queryParams = new Dictionary<string, string>
+            {
+                ["types"] = "public_channel,private_channel",
+                ["exclude_archived"] = "true",
+                ["limit"] = "200"
+            };
+            if (cursor != null) queryParams["cursor"] = cursor;
+
+            var doc = Drive.Client.GetAsync("users.conversations", queryParams).GetAwaiter().GetResult();
+            var root = doc.RootElement;
+
+            if (!root.GetProperty("ok").GetBoolean())
+            {
+                var error = root.TryGetProperty("error", out var e) ? e.GetString() : "Unknown error";
+                if (error == "ratelimited")
+                {
+                    System.Threading.Thread.Sleep(5000);
+                    continue;
                 }
-                return channels;
+                throw new InvalidOperationException($"Failed to get channels: {error}");
             }
 
-            // userBoot も失敗した場合: 他キャッシュにフォールバック
-            channels = LoadChannelsFromAnyCache();
-            if (channels != null)
+            foreach (var ch in root.GetProperty("channels").EnumerateArray())
             {
-                Drive.Cache.Channels = channels;
-                return channels;
+                var channel = new SlackChannel
+                {
+                    Id = ch.GetProperty("id").GetString() ?? "",
+                    Name = ch.GetProperty("name").GetString() ?? "",
+                    IsPrivate = ch.TryGetProperty("is_private", out var p) && p.GetBoolean(),
+                    IsArchived = ch.TryGetProperty("is_archived", out var a) && a.GetBoolean(),
+                    IsMember = true, // users.conversations は参加チャンネルのみ返す
+                    MemberCount = ch.TryGetProperty("num_members", out var n) ? n.GetInt32() : 0,
+                    Topic = ch.TryGetProperty("topic", out var t) && t.TryGetProperty("value", out var tv)
+                        ? tv.GetString() : null,
+                    Purpose = ch.TryGetProperty("purpose", out var pu) && pu.TryGetProperty("value", out var pv)
+                        ? pv.GetString() : null
+                };
+                result[channel.Name] = channel;
             }
-            throw;
+
+            cursor = root.TryGetProperty("response_metadata", out var meta) &&
+                     meta.TryGetProperty("next_cursor", out var c) &&
+                     !string.IsNullOrEmpty(c.GetString())
+                ? c.GetString()
+                : null;
+
+            if (cursor == null) break;
         }
+
+        return result;
     }
 
     private Dictionary<string, SlackUser> EnsureUsersLoaded()
@@ -734,73 +739,19 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         var users = Drive.Cache.Users;
         if (users != null) return users;
 
-        var fileCache = SlackCacheManager.LoadCache(Drive.TeamId);
-        if (fileCache?.Users != null)
-        {
-            users = fileCache.Users.ToDictionary(u => u.Name);
-            Drive.Cache.Users = users;
-            return users;
-        }
-
         try
         {
             users = FetchUsers();
-            Drive.Cache.Users = users;
-            SlackCacheManager.SaveUsers(Drive.TeamId, users.Values);
-            return users;
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("enterprise_is_restricted"))
         {
             // client.userBoot でチャンネルを取得した際に Users もキャッシュ済みかもしれない
             users = Drive.Cache.Users;
-            if (users != null) return users;
-
-            users = LoadUsersFromAnyCache();
-            if (users != null)
-            {
-                Drive.Cache.Users = users;
-                return users;
-            }
-            throw;
+            if (users == null) throw;
         }
-    }
 
-    /// <summary>指定 TeamId のキャッシュファイルからチャンネルを読み込む</summary>
-    private static Dictionary<string, SlackChannel>? LoadChannelsFromFileCache(string teamId)
-    {
-        var fileCache = SlackCacheManager.LoadCache(teamId);
-        if (fileCache?.Channels == null) return null;
-        return fileCache.Channels.ToDictionary(c => c.Name);
-    }
-
-    /// <summary>キャッシュディレクトリ内の全ファイルからチャンネルを探す (Enterprise Grid フォールバック)</summary>
-    private static Dictionary<string, SlackChannel>? LoadChannelsFromAnyCache()
-    {
-        var cacheDir = Path.Combine(SlackDriveConfigManager.GetConfigFolderPath(), "cache");
-        if (!Directory.Exists(cacheDir)) return null;
-
-        foreach (var file in Directory.GetFiles(cacheDir, "*.json"))
-        {
-            var teamId = Path.GetFileNameWithoutExtension(file);
-            var channels = LoadChannelsFromFileCache(teamId);
-            if (channels is { Count: > 0 }) return channels;
-        }
-        return null;
-    }
-
-    private static Dictionary<string, SlackUser>? LoadUsersFromAnyCache()
-    {
-        var cacheDir = Path.Combine(SlackDriveConfigManager.GetConfigFolderPath(), "cache");
-        if (!Directory.Exists(cacheDir)) return null;
-
-        foreach (var file in Directory.GetFiles(cacheDir, "*.json"))
-        {
-            var teamId = Path.GetFileNameWithoutExtension(file);
-            var fileCache = SlackCacheManager.LoadCache(teamId);
-            if (fileCache?.Users is { Count: > 0 })
-                return fileCache.Users.ToDictionary(u => u.Name);
-        }
-        return null;
+        Drive.Cache.Users = users;
+        return users;
     }
 
     private SlackChannel? GetChannelByName(string name)
@@ -1137,6 +1088,9 @@ public class SlackPaginationParameters
 
     [Parameter]
     public SwitchParameter Reload { get; set; }
+
+    [Parameter]
+    public SwitchParameter All { get; set; }
 
     [Parameter]
     public string? ExportCsv { get; set; }

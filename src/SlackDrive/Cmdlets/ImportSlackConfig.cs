@@ -1,0 +1,93 @@
+using System.Management.Automation;
+
+namespace SlackDrive;
+
+[Cmdlet(VerbsData.Import, "SlackConfig")]
+[OutputType(typeof(SlackDriveInfo))]
+public class ImportSlackConfigCommand : PSCmdlet
+{
+    protected override void ProcessRecord()
+    {
+        SlackDriveConfigManager.EnsureDefaultConfigExists();
+
+        var config = SlackDriveConfigManager.LoadConfig();
+        if (config?.PSDrives == null || config.PSDrives.Count == 0)
+        {
+            WriteWarning("No drives configured. Run Edit-SlackConfig to set up your Slack workspaces.");
+            return;
+        }
+
+        // Remove existing Slack drives that match config names
+        foreach (var driveSettings in config.PSDrives)
+        {
+            if (string.IsNullOrEmpty(driveSettings.Name)) continue;
+            try
+            {
+                using var ps = PowerShell.Create(RunspaceMode.CurrentRunspace);
+                ps.AddCommand("Get-PSDrive")
+                    .AddParameter("Name", driveSettings.Name)
+                    .AddParameter("ErrorAction", "SilentlyContinue");
+                var existing = ps.Invoke();
+                if (existing.Count > 0 && existing[0].BaseObject is PSDriveInfo drive &&
+                    drive.Provider.Name == "Slack")
+                {
+                    ps.Commands.Clear();
+                    ps.AddCommand("Remove-PSDrive").AddParameter("Name", driveSettings.Name);
+                    ps.Invoke();
+                    WriteVerbose($"Removed existing drive: {driveSettings.Name}");
+                }
+            }
+            catch { /* ignore cleanup errors */ }
+        }
+
+        // Mount drives from config (no authentication yet)
+        foreach (var driveSettings in config.PSDrives)
+        {
+            driveSettings.CascadeFromGlobalSettings(config);
+
+            if (driveSettings.Enabled != true) continue;
+            if (string.IsNullOrEmpty(driveSettings.Name)) continue;
+
+            if (string.IsNullOrEmpty(driveSettings.Token) && string.IsNullOrEmpty(driveSettings.ClientId))
+            {
+                WriteWarning($"\"{driveSettings.Name}\": Neither Token nor ClientId specified. Skipping.");
+                continue;
+            }
+
+            try
+            {
+                var baseDriveInfo = new PSDriveInfo(
+                    driveSettings.Name,
+                    SessionState.Provider.GetOne("Slack"),
+                    @"\",
+                    driveSettings.Description ?? driveSettings.Name,
+                    null);
+
+                SlackDriveInfo slackDrive;
+
+                if (!string.IsNullOrEmpty(driveSettings.Token))
+                {
+                    // 直接トークン: 遅延初期化（TestAuth は初回アクセス時）
+                    slackDrive = new SlackDriveInfo(baseDriveInfo, driveSettings.Token);
+                }
+                else
+                {
+                    // OAuth: authenticator 関数を渡すだけ（PKCE は初回アクセス時）
+                    var settings = driveSettings; // closure capture
+                    slackDrive = new SlackDriveInfo(baseDriveInfo, ct =>
+                    {
+                        var authManager = new SlackAuthManager(settings);
+                        return Task.FromResult(authManager.GetAccessToken());
+                    });
+                }
+
+                SessionState.Drive.New(slackDrive, "global");
+                WriteObject($"Mounted {driveSettings.Name}:");
+            }
+            catch (Exception ex)
+            {
+                WriteWarning($"\"{driveSettings.Name}\": Failed to mount - {ex.Message}");
+            }
+        }
+    }
+}

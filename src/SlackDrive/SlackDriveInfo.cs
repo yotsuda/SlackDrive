@@ -2,32 +2,102 @@ using System.Management.Automation;
 
 namespace SlackDrive;
 
-public class SlackDriveInfo : PSDriveInfo
+public class SlackDriveInfo : PSDriveInfo, IDisposable
 {
-    public SlackApiClient Client { get; }
-    public string TeamId { get; }
-    public string TeamName { get; }
-    public string WorkspaceUrl { get; }
-    public string BotUser { get; }
-    public string BotUserId { get; }
+    private volatile SlackApiClient? _client;
+    private readonly object _clientLock = new();
+    private readonly string? _token;
+    private readonly string? _cookie;
+    private volatile Func<CancellationToken, Task<string>>? _authenticator;
+    private SlackAuthTestResponse? _authInfo;
 
-    // Cache
+    public SlackApiClient Client
+    {
+        get
+        {
+            if (_client == null)
+            {
+                lock (_clientLock)
+                {
+                    if (_client == null)
+                    {
+                        var token = _token;
+                        if (token == null && _authenticator != null)
+                        {
+                            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+                            token = _authenticator(cts.Token).GetAwaiter().GetResult();
+                            _authenticator = null;
+                        }
+                        if (string.IsNullOrEmpty(token))
+                            throw new InvalidOperationException("No token available. Provide Token or ClientId/ClientSecret.");
+
+                        _client = new SlackApiClient(token, _cookie);
+                        _authInfo = _client.TestAuthAsync().GetAwaiter().GetResult();
+                    }
+                }
+            }
+            return _client;
+        }
+    }
+
+    public string TeamId => EnsureAuthInfo().TeamId;
+    public string TeamName => EnsureAuthInfo().Team;
+    public string WorkspaceUrl => EnsureAuthInfo().Url;
+    public string BotUser => EnsureAuthInfo().User;
+    public string BotUserId => EnsureAuthInfo().UserId;
+
+    /// <summary>
+    /// ユーザートークン (xoxp- / xoxc-) の場合 true。
+    /// Client が未初期化の場合は token prefix で判定、
+    /// authenticator 使用時は初回アクセスまで false を返す。
+    /// </summary>
+    public bool IsUserToken
+    {
+        get
+        {
+            if (_token != null)
+                return _token.StartsWith("xoxp-") || _token.StartsWith("xoxc-");
+            if (_client != null)
+                return _client.Token.StartsWith("xoxp-") || _client.Token.StartsWith("xoxc-");
+            // OAuth authenticator → ユーザートークンになる
+            return _authenticator != null;
+        }
+    }
+
+    /// <summary>Client が初期化済みかどうか。PKCE を発火せずに確認できる。</summary>
+    public bool IsConnected => _client != null;
+
     internal SlackCache Cache { get; }
 
-    public SlackDriveInfo(
-        PSDriveInfo driveInfo,
-        SlackApiClient client,
-        SlackAuthTestResponse authInfo)
-        : base(driveInfo.Name, driveInfo.Provider, driveInfo.Root,
-               driveInfo.Description, driveInfo.Credential, authInfo.Url)
+    /// <summary>直接トークン指定でマウント。</summary>
+    public SlackDriveInfo(PSDriveInfo driveInfo, string token, string? cookie = null)
+        : base(driveInfo)
     {
-        Client = client ?? throw new ArgumentNullException(nameof(client));
-        TeamId = authInfo.TeamId;
-        TeamName = authInfo.Team;
-        WorkspaceUrl = authInfo.Url;
-        BotUser = authInfo.User;
-        BotUserId = authInfo.UserId;
+        _token = token ?? throw new ArgumentNullException(nameof(token));
+        _cookie = cookie;
         Cache = new SlackCache();
+    }
+
+    /// <summary>OAuth 遅延認証でマウント。認証は初回 API アクセス時に実行される。</summary>
+    public SlackDriveInfo(PSDriveInfo driveInfo, Func<CancellationToken, Task<string>> authenticator)
+        : base(driveInfo)
+    {
+        _authenticator = authenticator ?? throw new ArgumentNullException(nameof(authenticator));
+        Cache = new SlackCache();
+    }
+
+    private SlackAuthTestResponse EnsureAuthInfo()
+    {
+        if (_authInfo != null) return _authInfo;
+        // Client getter が _authInfo も初期化する
+        _ = Client;
+        return _authInfo!;
+    }
+
+    public void Dispose()
+    {
+        _client?.Dispose();
+        GC.SuppressFinalize(this);
     }
 }
 

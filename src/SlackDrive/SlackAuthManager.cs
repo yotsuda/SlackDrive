@@ -73,8 +73,9 @@ public class SlackAuthManager
         string codeVerifier = GenerateCodeVerifier();
         string codeChallenge = GenerateCodeChallenge(codeVerifier);
         
-        // 必要なスコープ
-        string scopes = "channels:read channels:history groups:read groups:history users:read search:read";
+        // スコープ (カスタマイズ可能)
+        string scopes = _settings.Scopes
+            ?? "channels:read channels:history groups:read groups:history users:read search:read";
         
         // 認証 URL 構築
         string state = Guid.NewGuid().ToString("N");

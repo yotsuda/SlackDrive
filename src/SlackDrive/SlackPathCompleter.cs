@@ -110,7 +110,7 @@ public class SlackPathCompleter : IArgumentCompleter
             foreach (var name in new[] { "Channels", "Users", "Files" })
             {
                 if (pattern.IsMatch(name))
-                    results.Add(MakeResult(inputPrefix + name, name, CompletionResultType.ProviderContainer));
+                    results.Add(MakeResult(inputPrefix + name, name, CompletionResultType.ProviderItem));
             }
             return results;
         }
@@ -131,7 +131,7 @@ public class SlackPathCompleter : IArgumentCompleter
             foreach (var ch in channels.Values.OrderBy(c => c.Name))
             {
                 if (pattern.IsMatch(ch.Name))
-                    results.Add(MakeResult(inputPrefix + ch.Name, ch.Name, CompletionResultType.ProviderContainer));
+                    results.Add(MakeResult(inputPrefix + ch.Name, ch.Name, CompletionResultType.ProviderItem));
             }
         }
         // ── Channels/<channel>/messages (メッセージ) ──
@@ -239,46 +239,12 @@ public class SlackPathCompleter : IArgumentCompleter
 
     private static Dictionary<string, SlackChannel>? GetChannels(SlackDriveInfo drive)
     {
-        var channels = drive.Cache.Channels;
-        if (channels != null) return channels;
-
-        // ファイルキャッシュ (自 TeamId → 他キャッシュの順)
-        channels = LoadChannelsFromFile(drive.TeamId);
-        if (channels == null)
-        {
-            var cacheDir = Path.Combine(SlackDriveConfigManager.GetConfigFolderPath(), "cache");
-            if (Directory.Exists(cacheDir))
-            {
-                foreach (var file in Directory.GetFiles(cacheDir, "*.json"))
-                {
-                    channels = LoadChannelsFromFile(Path.GetFileNameWithoutExtension(file));
-                    if (channels is { Count: > 0 }) break;
-                }
-            }
-        }
-
-        if (channels != null) drive.Cache.Channels = channels;
-        return channels;
-    }
-
-    private static Dictionary<string, SlackChannel>? LoadChannelsFromFile(string teamId)
-    {
-        var cache = SlackCacheManager.LoadCache(teamId);
-        if (cache?.Channels == null) return null;
-        return cache.Channels.ToDictionary(c => c.Name);
+        return drive.Cache.Channels;
     }
 
     private static Dictionary<string, SlackUser>? GetUsers(SlackDriveInfo drive)
     {
-        var users = drive.Cache.Users;
-        if (users != null) return users;
-
-        var cache = SlackCacheManager.LoadCache(drive.TeamId);
-        if (cache?.Users == null) return null;
-
-        users = cache.Users.ToDictionary(u => u.Name);
-        drive.Cache.Users = users;
-        return users;
+        return drive.Cache.Users;
     }
 
     private static List<SlackMessage>? FetchRecentMessages(SlackDriveInfo drive, string channelId)

@@ -5,17 +5,18 @@
     Author = 'Yoshifumi Tsuda'
     CompanyName = ''
     Copyright = '(c) 2026 Yoshifumi Tsuda. All rights reserved.'
-    Description = 'PowerShell Provider for Slack workspaces. Navigate channels, users, and messages like a file system.'
-    PowerShellVersion = '7.0'
+    Description = 'PowerShell Provider for Slack workspaces. Navigate channels, users, and messages like a file system using ls, cd, and Get-Content.'
+    PowerShellVersion = '7.4'
     NestedModules = @('SlackDrive.psm1')
     FormatsToProcess = @('SlackDrive.Format.ps1xml')
-    FunctionsToExport = @('New-SlackDrive')
-    CmdletsToExport = @('Edit-SlackConfig', 'Update-SlackCache', 'Open-SlackPage')
+    FunctionsToExport = @('New-SlackDrive', 'Set-SlackDriveSecret')
+    CmdletsToExport = @('Import-SlackConfig', 'Edit-SlackConfig', 'Get-SlackConfigPath', 'Update-SlackCache', 'Open-SlackPage', 'Join-SlackChannel', 'Exit-SlackChannel')
     AliasesToExport = @()
     PrivateData = @{
         PSData = @{
-            Tags = @('Slack', 'Provider', 'PSProvider', 'Chat')
-            ProjectUri = 'https://github.com/yoshifumi-tsuda/SlackDrive'
+            Tags = @('Slack', 'Provider', 'PSProvider', 'Chat', 'API', 'NavigationProvider', 'Workspace')
+            LicenseUri = 'https://github.com/yotsuda/SlackDrive/blob/main/LICENSE'
+            ProjectUri = 'https://github.com/yotsuda/SlackDrive'
         }
     }
 }

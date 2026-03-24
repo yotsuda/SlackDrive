@@ -68,18 +68,20 @@
       </GroupBy>
       <TableControl>
         <TableHeaders>
+          <TableColumnHeader><Label> </Label><Width>2</Width><Alignment>Right</Alignment></TableColumnHeader>
           <TableColumnHeader><Label>Name</Label><Width>25</Width></TableColumnHeader>
           <TableColumnHeader><Label>Members</Label><Width>8</Width><Alignment>Right</Alignment></TableColumnHeader>
-          <TableColumnHeader><Label>Private</Label><Width>8</Width></TableColumnHeader>
           <TableColumnHeader><Label>Archived</Label><Width>9</Width></TableColumnHeader>
           <TableColumnHeader><Label>Topic</Label></TableColumnHeader>
         </TableHeaders>
         <TableRowEntries>
           <TableRowEntry>
             <TableColumnItems>
+              <TableColumnItem>
+                <ScriptBlock>if ($_.IsPrivate) { "`u{1F512}" } else { "#" }</ScriptBlock>
+              </TableColumnItem>
               <TableColumnItem><PropertyName>Name</PropertyName></TableColumnItem>
               <TableColumnItem><PropertyName>MemberCount</PropertyName></TableColumnItem>
-              <TableColumnItem><PropertyName>IsPrivate</PropertyName></TableColumnItem>
               <TableColumnItem><PropertyName>IsArchived</PropertyName></TableColumnItem>
               <TableColumnItem><PropertyName>Topic</PropertyName></TableColumnItem>
             </TableColumnItems>

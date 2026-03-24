@@ -38,7 +38,7 @@ public class EditSlackConfigCommand : PSCmdlet
                 WriteError(new ErrorRecord(ex, "LaunchEditorFailed", ErrorCategory.ResourceUnavailable, configFilePath));
             }
 
-            WriteWarning($"Please edit '{configFilePath}'. After saving, restart PowerShell and run `Import-Module SlackDrive` to apply changes.");
+            WriteWarning($"Please edit '{configFilePath}'. After saving, run `Import-SlackConfig` to apply changes.");
             return;
         }
 
@@ -49,6 +49,6 @@ public class EditSlackConfigCommand : PSCmdlet
         SessionState.Path.PushCurrentLocation("default");
         SessionState.Path.SetLocation(folder!);
 
-        WriteWarning($"Please edit './{fileName}'. After saving, restart PowerShell and run `Import-Module SlackDrive` to apply changes. Use `popd` to return.");
+        WriteWarning($"Please edit './{fileName}'. After saving, run `Import-SlackConfig` to apply changes. Use `popd` to return.");
     }
 }

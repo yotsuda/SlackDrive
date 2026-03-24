@@ -6,10 +6,8 @@ namespace SlackDrive;
 public class SlackDriveConfig
 {
     public List<SlackDriveSettings>? PSDrives { get; set; }
-    
+
     // グローバル設定（全ドライブに適用）
-    public string? ClientId { get; set; }
-    public string? ClientSecret { get; set; }
     public int? RateLimitDelayMs { get; set; }
     public int? CacheExpiryMinutes { get; set; }
 }
@@ -18,26 +16,25 @@ public class SlackDriveSettings
 {
     public string? Name { get; set; }
     public string? Description { get; set; }
-    
+
     // 認証
     public string? Token { get; set; }
     public string? RefreshToken { get; set; }
     public string? ClientId { get; set; }
     public string? ClientSecret { get; set; }
     public string? RedirectUrl { get; set; }
-    
+    public string? Scopes { get; set; }
+
     // オプション
     public bool? Enabled { get; set; }
     public int? RateLimitDelayMs { get; set; }
     public int? CacheExpiryMinutes { get; set; }
-    
+
     // グローバル設定からカスケード
     internal void CascadeFromGlobalSettings(SlackDriveConfig? global)
     {
         if (global == null) return;
-        
-        ClientId ??= global.ClientId;
-        ClientSecret ??= global.ClientSecret;
+
         RateLimitDelayMs ??= global.RateLimitDelayMs;
         CacheExpiryMinutes ??= global.CacheExpiryMinutes;
         Enabled ??= true;
@@ -53,7 +50,7 @@ public static class SlackDriveConfigManager
         PropertyNameCaseInsensitive = true,
         WriteIndented = true
     };
-    
+
     public static string GetConfigFolderPath()
     {
         string moduleName = "SlackDrive";
@@ -68,21 +65,21 @@ public static class SlackDriveConfigManager
             return Path.Combine(home, ".local", "share", "powershell", "Modules", moduleName);
         }
     }
-    
+
     public static string GetConfigFilePath()
     {
         return Path.Combine(GetConfigFolderPath(), "SlackDriveConfig.json");
     }
-    
+
     public static SlackDriveConfig? LoadConfig()
     {
         string path = GetConfigFilePath();
         if (!File.Exists(path)) return null;
-        
+
         string json = File.ReadAllText(path);
         return JsonSerializer.Deserialize<SlackDriveConfig>(json, _jsonOptions);
     }
-    
+
     public static void SaveConfig(SlackDriveConfig config)
     {
         string path = GetConfigFilePath();
@@ -91,16 +88,16 @@ public static class SlackDriveConfigManager
         {
             Directory.CreateDirectory(folder);
         }
-        
+
         string json = JsonSerializer.Serialize(config, _jsonOptions);
         File.WriteAllText(path, json);
     }
-    
+
     public static void EnsureDefaultConfigExists()
     {
         string path = GetConfigFilePath();
         if (File.Exists(path)) return;
-        
+
         var defaultConfig = new SlackDriveConfig
         {
             RateLimitDelayMs = 1000,
@@ -110,13 +107,14 @@ public static class SlackDriveConfigManager
                 new SlackDriveSettings
                 {
                     Name = "MySlack",
-                    Token = "xoxb-your-bot-token-here",
+                    ClientId = "YOUR_CLIENT_ID",
+                    ClientSecret = "YOUR_CLIENT_SECRET",
                     Description = "My Slack workspace",
                     Enabled = false
                 }
             }
         };
-        
+
         SaveConfig(defaultConfig);
     }
 }

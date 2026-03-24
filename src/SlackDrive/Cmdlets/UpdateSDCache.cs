@@ -46,7 +46,6 @@ public class UpdateSlackCacheCommand : PSCmdlet
                 Host.UI.WriteLine("  Fetching channels...");
                 var channels = FetchChannelsForDrive(drive);
                 drive.Cache.Channels = channels;
-                SlackCacheManager.SaveChannels(drive.TeamId, channels.Values);
                 Host.UI.WriteLine($"  Cached {channels.Count} channels");
             }
 
@@ -55,7 +54,6 @@ public class UpdateSlackCacheCommand : PSCmdlet
                 Host.UI.WriteLine("  Fetching users...");
                 var users = FetchUsersForDrive(drive);
                 drive.Cache.Users = users;
-                SlackCacheManager.SaveUsers(drive.TeamId, users.Values);
                 Host.UI.WriteLine($"  Cached {users.Count} users");
             }
         }
