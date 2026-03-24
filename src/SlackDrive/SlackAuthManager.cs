@@ -31,7 +31,7 @@ public class SlackAuthManager
         _refreshToken = settings.RefreshToken;
     }
     
-    public string GetAccessToken()
+    public string GetAccessToken(CancellationToken ct = default)
     {
         // 1. 直接トークン指定
         if (IsDirectToken)
@@ -39,7 +39,7 @@ public class SlackAuthManager
             _accessToken = _settings.Token;
             return _accessToken!;
         }
-        
+
         // 2. 既存のリフレッシュトークンがあれば使用
         if (!string.IsNullOrEmpty(_refreshToken))
         {
@@ -52,32 +52,32 @@ public class SlackAuthManager
                 // リフレッシュ失敗時は再認証
             }
         }
-        
+
         // 3. OAuth フローで認証 (Slack は PKCE + ClientSecret を併用)
         if (!string.IsNullOrEmpty(_settings.ClientId))
         {
-            return AuthorizeWithOAuth();
+            return AuthorizeWithOAuth(ct);
         }
-        
+
         throw new InvalidOperationException("No valid authentication method configured. Provide Token, or ClientId for OAuth flow.");
     }
     
-    private string AuthorizeWithOAuth()
+    private string AuthorizeWithOAuth(CancellationToken ct)
     {
         if (string.IsNullOrEmpty(_settings.ClientId))
             throw new InvalidOperationException("ClientId is required for OAuth flow.");
-        
+
         // デフォルトのリダイレクト URL
         string redirectUrl = _settings.RedirectUrl ?? "http://localhost:8765/slack/callback";
-        
+
         // PKCE 用の code_verifier 生成
         string codeVerifier = GenerateCodeVerifier();
         string codeChallenge = GenerateCodeChallenge(codeVerifier);
-        
+
         // スコープ (カスタマイズ可能)
         string scopes = _settings.Scopes
             ?? "channels:read channels:history groups:read groups:history im:read im:history mpim:read mpim:history users:read search:read";
-        
+
         // 認証 URL 構築
         string state = Guid.NewGuid().ToString("N");
         string authUrl = $"https://slack.com/oauth/v2/authorize" +
@@ -87,15 +87,15 @@ public class SlackAuthManager
             $"&state={state}" +
             $"&code_challenge={codeChallenge}" +
             $"&code_challenge_method=S256";
-        
+
         // HttpListener でコールバック待機
-        string authorizationCode = WaitForAuthorizationCode(redirectUrl, state, authUrl);
-        
+        string authorizationCode = WaitForAuthorizationCode(redirectUrl, state, authUrl, ct);
+
         // トークン交換
         return ExchangeCodeForToken(authorizationCode, codeVerifier, redirectUrl);
     }
-    
-    private string WaitForAuthorizationCode(string redirectUrl, string expectedState, string authUrl)
+
+    private string WaitForAuthorizationCode(string redirectUrl, string expectedState, string authUrl, CancellationToken ct)
     {
         var uri = new Uri(redirectUrl);
         
@@ -128,9 +128,12 @@ public class SlackAuthManager
         
         // ブラウザで認証 URL を開く
         Process.Start(new ProcessStartInfo(authUrl) { UseShellExecute = true });
-        
+
+        // Ctrl+C でリスナーを停止し、GetContext をキャンセルする
+        using var ctReg = ct.Register(() => listener.Stop());
+
         string? authorizationCode = null;
-        
+
         try
         {
             var context = listener.GetContext();
@@ -163,12 +166,16 @@ public class SlackAuthManager
             authorizationCode = code;
             SendSuccessResponse(context);
         }
+        catch (HttpListenerException) when (ct.IsCancellationRequested)
+        {
+            throw new OperationCanceledException("OAuth authentication was cancelled.", ct);
+        }
         finally
         {
             listener.Stop();
             listener.Close();
         }
-        
+
         return authorizationCode!;
     }
     

@@ -79,7 +79,7 @@ public class ImportSlackConfigCommand : PSCmdlet
                     slackDrive = new SlackDriveInfo(baseDriveInfo, ct =>
                     {
                         var authManager = new SlackAuthManager(settings);
-                        return Task.FromResult(authManager.GetAccessToken());
+                        return Task.FromResult(authManager.GetAccessToken(ct));
                     }, proxy: proxy, logging: logging);
                 }
 
