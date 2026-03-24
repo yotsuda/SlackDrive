@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang='ja'>
+<head>
+    <meta charset='UTF-8'>
+    <title>SlackDrive</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Meiryo', sans-serif;
+            background: linear-gradient(135deg, #f7f5f5 0%, #f1eeee 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .notification-box {
+            position: relative;
+            background-color: #ffffff;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+            border-radius: 10px;
+            text-align: center;
+            min-width: 360px;
+            overflow: hidden;
+        }
+
+        .accent {
+            height: 4px;
+            background: linear-gradient(90deg, #e57373, #e01e5a, #ef9a9a);
+        }
+
+        .content {
+            padding: 32px 40px 24px;
+        }
+
+        .error-circle {
+            width: 56px;
+            height: 56px;
+            margin: 0 auto 18px;
+            background: #e01e5a;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 8px rgba(224, 30, 90, 0.3);
+        }
+
+        .error-circle svg {
+            width: 26px;
+            height: 26px;
+        }
+
+        h2 {
+            color: #1d1c1d;
+            margin: 0 0 20px;
+            font-size: 1.25em;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }
+
+        .error-detail {
+            color: #c0392b;
+            font-size: 0.9em;
+            background: #fdf2f2;
+            border: 1px solid #f0d0d0;
+            border-radius: 6px;
+            padding: 10px 16px;
+            margin: 0 0 6px;
+            word-break: break-all;
+        }
+
+        .hint {
+            color: #aaa;
+            font-size: 0.82em;
+            margin-top: 22px;
+        }
+
+        .footer {
+            border-top: 1px solid #f0f0f0;
+            padding: 10px 24px;
+            text-align: right;
+        }
+
+        .footer a {
+            font-size: 0.75em;
+            color: #ccc;
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            color: #e01e5a;
+        }
+    </style>
+</head>
+<body>
+    <div class='notification-box'>
+        <div class="accent"></div>
+        <div class="content">
+            <div class="error-circle">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                </svg>
+            </div>
+            <h2>Authorization Failed</h2>
+            <p class="error-detail">{{ERROR_MESSAGE}}</p>
+            <p class="hint">Return to PowerShell and try again.</p>
+        </div>
+        <div class="footer">
+            <a href="https://github.com/yotsuda/SlackDrive" target="_blank" rel="noopener noreferrer">SlackDrive v{{VERSION}}</a>
+        </div>
+    </div>
+</body>
+</html>

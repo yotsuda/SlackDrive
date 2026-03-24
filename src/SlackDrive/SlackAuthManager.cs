@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -142,25 +143,25 @@ public class SlackAuthManager
             // エラーチェック
             if (!string.IsNullOrEmpty(error))
             {
-                SendResponse(context, $"<h1>Authorization Failed</h1><p>Error: {error}</p>");
+                SendFailureResponse(context, error);
                 throw new InvalidOperationException($"OAuth error: {error}");
             }
-            
+
             // State 検証
             if (state != expectedState)
             {
-                SendResponse(context, "<h1>Authorization Failed</h1><p>Invalid state parameter.</p>");
+                SendFailureResponse(context, "Invalid state parameter.");
                 throw new InvalidOperationException("Invalid state parameter - possible CSRF attack.");
             }
-            
+
             if (string.IsNullOrEmpty(code))
             {
-                SendResponse(context, "<h1>Authorization Failed</h1><p>No authorization code received.</p>");
+                SendFailureResponse(context, "No authorization code received.");
                 throw new InvalidOperationException("No authorization code received.");
             }
-            
+
             authorizationCode = code;
-            SendResponse(context, "<h1>Authorization Successful!</h1><p>You can close this window and return to PowerShell.</p>");
+            SendSuccessResponse(context);
         }
         finally
         {
@@ -171,14 +172,44 @@ public class SlackAuthManager
         return authorizationCode!;
     }
     
-    private static void SendResponse(HttpListenerContext context, string html)
+    private void SendSuccessResponse(HttpListenerContext context)
     {
-        string fullHtml = $"<!DOCTYPE html><html><head><meta charset='utf-8'><title>SlackDrive</title></head><body>{html}</body></html>";
-        byte[] buffer = Encoding.UTF8.GetBytes(fullHtml);
+        var html = LoadEmbeddedResource("SlackDrive.Resources.AuthSuccess.html");
+        html = html.Replace("{{DRIVE_NAME}}", WebUtility.HtmlEncode(_settings.Name ?? "Slack"));
+        html = html.Replace("{{VERSION}}", GetVersion());
+        WriteResponse(context, html, 200);
+    }
+
+    private static void SendFailureResponse(HttpListenerContext context, string errorMessage)
+    {
+        var html = LoadEmbeddedResource("SlackDrive.Resources.AuthFailure.html");
+        html = html.Replace("{{ERROR_MESSAGE}}", WebUtility.HtmlEncode(errorMessage));
+        html = html.Replace("{{VERSION}}", GetVersion());
+        WriteResponse(context, html, 400);
+    }
+
+    private static void WriteResponse(HttpListenerContext context, string html, int statusCode)
+    {
+        byte[] buffer = Encoding.UTF8.GetBytes(html);
+        context.Response.StatusCode = statusCode;
         context.Response.ContentType = "text/html; charset=UTF-8";
         context.Response.ContentLength64 = buffer.Length;
         context.Response.OutputStream.Write(buffer, 0, buffer.Length);
         context.Response.Close();
+    }
+
+    private static string LoadEmbeddedResource(string resourceName)
+    {
+        var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+        using var stream = assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException($"Embedded resource not found: {resourceName}");
+        using var reader = new StreamReader(stream, Encoding.UTF8);
+        return reader.ReadToEnd();
+    }
+
+    private static string GetVersion()
+    {
+        return typeof(SlackAuthManager).Assembly.GetName().Version?.ToString(3) ?? "0.1.0";
     }
     
     private string ExchangeCodeForToken(string code, string codeVerifier, string redirectUrl)

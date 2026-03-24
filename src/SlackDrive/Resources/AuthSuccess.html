@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang='ja'>
+<head>
+    <meta charset='UTF-8'>
+    <title>SlackDrive</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Meiryo', sans-serif;
+            background: linear-gradient(135deg, #f5f3f7 0%, #eeeaf1 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .notification-box {
+            position: relative;
+            background-color: #ffffff;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+            border-radius: 10px;
+            text-align: center;
+            min-width: 360px;
+            overflow: hidden;
+        }
+
+        .accent {
+            height: 4px;
+            background: linear-gradient(90deg, #4a154b, #611f69, #36c5f0);
+        }
+
+        .content {
+            padding: 32px 40px 24px;
+        }
+
+        .check-circle {
+            width: 56px;
+            height: 56px;
+            margin: 0 auto 18px;
+            background: #2eb67d;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 8px rgba(46, 182, 125, 0.3);
+        }
+
+        .check-circle svg {
+            width: 28px;
+            height: 28px;
+        }
+
+        h2 {
+            color: #1d1c1d;
+            margin: 0 0 20px;
+            font-size: 1.25em;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }
+
+        p {
+            color: #555;
+            line-height: 1.7;
+            margin: 0 0 6px;
+            font-size: 0.95em;
+        }
+
+        .drive-name {
+            display: inline-block;
+            margin-top: 10px;
+            font-family: 'Cascadia Code', 'Consolas', monospace;
+            font-size: 1.05em;
+            font-weight: 600;
+            color: #4a154b;
+            background: #f4eef5;
+            border: 1px solid #ddd0e0;
+            border-radius: 6px;
+            padding: 5px 16px;
+            letter-spacing: 0.03em;
+        }
+
+        .hint {
+            color: #aaa;
+            font-size: 0.82em;
+            margin-top: 22px;
+        }
+
+        .footer {
+            border-top: 1px solid #f0f0f0;
+            padding: 10px 24px;
+            text-align: right;
+        }
+
+        .footer a {
+            font-size: 0.75em;
+            color: #ccc;
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            color: #611f69;
+        }
+    </style>
+</head>
+<body>
+    <div class='notification-box'>
+        <div class="accent"></div>
+        <div class="content">
+            <div class="check-circle">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="4 12 10 18 20 6"/>
+                </svg>
+            </div>
+            <h2>Authorization Successful</h2>
+            <p>Connected to Slack workspace.<br>
+               Your PowerShell drive is ready.</p>
+            <div class="drive-name">{{DRIVE_NAME}}:\</div>
+            <p class="hint">You can close this tab and return to PowerShell.</p>
+        </div>
+        <div class="footer">
+            <a href="https://github.com/yotsuda/SlackDrive" target="_blank" rel="noopener noreferrer">SlackDrive v{{VERSION}}</a>
+        </div>
+    </div>
+</body>
+</html>

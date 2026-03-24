@@ -14,4 +14,9 @@
     <PackageReference Include="System.Management.Automation" Version="7.5.0" PrivateAssets="all" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\AuthSuccess.html" />
+    <EmbeddedResource Include="Resources\AuthFailure.html" />
+  </ItemGroup>
+
 </Project>
