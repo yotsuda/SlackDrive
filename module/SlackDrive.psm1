@@ -79,31 +79,4 @@ function Set-SlackDriveSecret {
     Write-Host "Token saved as '$Name'. Use: New-SlackDrive -Name <DriveName> -SecretName '$Name'" -ForegroundColor Green
 }
 
-# Tab completion for Slack provider paths.
-# Overrides the default provider completer (which crashes on large result sets
-# due to a duplicate-key bug in CompletionCompleters.GetDefaultProviderResults)
-# and falls back to the default completer for non-Slack drives.
-$script:SlackCompleterBlock = {
-    param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
-
-    # Determine if we're on a Slack drive
-    $isSlack = $false
-    if ($wordToComplete -match '^([^:]+):') {
-        $drv = Get-PSDrive -Name $Matches[1] -ErrorAction SilentlyContinue
-        $isSlack = $drv.Provider.Name -eq 'Slack'
-    } elseif ((Get-Location).Provider.Name -eq 'Slack') {
-        $isSlack = $true
-    }
-
-    if ($isSlack) {
-        [SlackDrive.SlackPathCompleter]::new().CompleteArgument(
-            $commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
-    }
-    # Non-Slack: return nothing → PS falls back to default completion
-}
-
-foreach ($cmd in @('Set-Location', 'Get-ChildItem', 'Get-Item', 'Get-Content', 'Invoke-Item')) {
-    Register-ArgumentCompleter -CommandName $cmd -ParameterName Path -ScriptBlock $script:SlackCompleterBlock
-}
-
 Export-ModuleMember -Function New-SlackDrive, Set-SlackDriveSecret
