@@ -8,6 +8,7 @@
     <OutputType>Library</OutputType>
     <RootNamespace>SlackDrive</RootNamespace>
     <AssemblyName>SlackDrive</AssemblyName>
+    <Version>0.1.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
