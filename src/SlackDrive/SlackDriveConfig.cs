@@ -1,15 +1,57 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace SlackDrive;
 
-public class SlackDriveConfig
+/// <summary>
+/// 設定ファイルのルート。SlackDriveSettings を継承し、グローバル設定として機能する。
+/// 各 PSDrive で未指定のプロパティはグローバル設定からカスケードされる。
+/// </summary>
+public class SlackDriveConfig : SlackDriveSettings
 {
     public List<SlackDriveSettings>? PSDrives { get; set; }
+}
 
-    // グローバル設定（全ドライブに適用）
-    public int? RateLimitDelayMs { get; set; }
-    public int? CacheExpiryMinutes { get; set; }
+public enum LoggingLevel
+{
+    Error,
+    Info,
+    Verbose
+}
+
+public class LoggingSettings
+{
+    public bool? Enabled { get; set; }
+
+    private LoggingLevel? _level;
+    public string? Level
+    {
+        get => _level?.ToString();
+        set => _level = value?.Trim().ToLower() switch
+        {
+            null => null,
+            "error" => LoggingLevel.Error,
+            "info" or "information" => LoggingLevel.Info,
+            "verbose" => LoggingLevel.Verbose,
+            _ => throw new ArgumentException("Invalid logging level. Valid values are: Error, Info, Verbose.")
+        };
+    }
+    internal LoggingLevel? InternalLogLevel => _level;
+}
+
+public class ProxySettings
+{
+    public string? Url { get; set; }
+    public bool? UseDefaultWebProxy { get; set; }
+    public bool? BypassProxyOnLocal { get; set; }
+    public bool? UseDefaultCredentials { get; set; }
+    public ProxyCredentials? Credentials { get; set; }
+    public bool? Enabled { get; set; }
+}
+
+public class ProxyCredentials
+{
+    public string? Username { get; set; }
+    public string? Password { get; set; }
 }
 
 public class SlackDriveSettings
@@ -30,14 +72,56 @@ public class SlackDriveSettings
     public int? RateLimitDelayMs { get; set; }
     public int? CacheExpiryMinutes { get; set; }
 
-    // グローバル設定からカスケード
+    // HTTP
+    public ProxySettings? Proxy { get; set; }
+    public LoggingSettings? Logging { get; set; }
+
+    /// <summary>
+    /// 未指定のプロパティをグローバル設定から補完する。
+    /// </summary>
     internal void CascadeFromGlobalSettings(SlackDriveConfig? global)
     {
         if (global == null) return;
 
+        ClientId ??= global.ClientId;
+        ClientSecret ??= global.ClientSecret;
+        RedirectUrl ??= global.RedirectUrl;
+        Scopes ??= global.Scopes;
         RateLimitDelayMs ??= global.RateLimitDelayMs;
         CacheExpiryMinutes ??= global.CacheExpiryMinutes;
         Enabled ??= true;
+
+        if (Proxy == null)
+        {
+            Proxy = global.Proxy;
+        }
+        else if (global.Proxy != null)
+        {
+            Proxy.Url ??= global.Proxy.Url;
+            Proxy.UseDefaultWebProxy ??= global.Proxy.UseDefaultWebProxy;
+            Proxy.BypassProxyOnLocal ??= global.Proxy.BypassProxyOnLocal;
+            Proxy.UseDefaultCredentials ??= global.Proxy.UseDefaultCredentials;
+            Proxy.Enabled ??= global.Proxy.Enabled;
+            if (Proxy.Credentials == null)
+            {
+                Proxy.Credentials = global.Proxy.Credentials;
+            }
+            else if (global.Proxy.Credentials != null)
+            {
+                Proxy.Credentials.Username ??= global.Proxy.Credentials.Username;
+                Proxy.Credentials.Password ??= global.Proxy.Credentials.Password;
+            }
+        }
+
+        if (Logging == null)
+        {
+            Logging = global.Logging;
+        }
+        else if (global.Logging != null)
+        {
+            Logging.Enabled ??= global.Logging.Enabled;
+            Logging.Level ??= global.Logging.Level;
+        }
     }
 }
 
@@ -100,6 +184,8 @@ public static class SlackDriveConfigManager
 
         var defaultConfig = new SlackDriveConfig
         {
+            ClientId = "YOUR_CLIENT_ID",
+            ClientSecret = "YOUR_CLIENT_SECRET",
             RateLimitDelayMs = 1000,
             CacheExpiryMinutes = 5,
             PSDrives = new List<SlackDriveSettings>
@@ -107,8 +193,6 @@ public static class SlackDriveConfigManager
                 new SlackDriveSettings
                 {
                     Name = "MySlack",
-                    ClientId = "YOUR_CLIENT_ID",
-                    ClientSecret = "YOUR_CLIENT_SECRET",
                     Description = "My Slack workspace",
                     Enabled = false
                 }

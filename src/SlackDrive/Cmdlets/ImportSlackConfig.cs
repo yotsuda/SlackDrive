@@ -65,20 +65,22 @@ public class ImportSlackConfigCommand : PSCmdlet
 
                 SlackDriveInfo slackDrive;
 
+                var proxy = driveSettings.Proxy;
+                var logging = driveSettings.Logging;
+
                 if (!string.IsNullOrEmpty(driveSettings.Token))
                 {
-                    // 直接トークン: 遅延初期化（TestAuth は初回アクセス時）
-                    slackDrive = new SlackDriveInfo(baseDriveInfo, driveSettings.Token);
+                    slackDrive = new SlackDriveInfo(baseDriveInfo, driveSettings.Token,
+                        proxy: proxy, logging: logging);
                 }
                 else
                 {
-                    // OAuth: authenticator 関数を渡すだけ（PKCE は初回アクセス時）
                     var settings = driveSettings; // closure capture
                     slackDrive = new SlackDriveInfo(baseDriveInfo, ct =>
                     {
                         var authManager = new SlackAuthManager(settings);
                         return Task.FromResult(authManager.GetAccessToken());
-                    });
+                    }, proxy: proxy, logging: logging);
                 }
 
                 SessionState.Drive.New(slackDrive, "global");

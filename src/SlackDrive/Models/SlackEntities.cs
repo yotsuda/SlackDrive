@@ -16,7 +16,18 @@ public class SlackChannel
     public string? Purpose { get; set; }
     public int MemberCount { get; set; }
     public DateTime Created { get; set; }
+
+    public SlackChannelDetail ToDetail() => new()
+    {
+        Path = Path, Directory = Directory,
+        Id = Id, Name = Name, IsPrivate = IsPrivate, IsArchived = IsArchived,
+        IsMember = IsMember, Topic = Topic, Purpose = Purpose,
+        MemberCount = MemberCount, Created = Created
+    };
 }
+
+/// <summary>Get-Item で返す詳細ビュー用サブクラス。Members 列を含む。</summary>
+public class SlackChannelDetail : SlackChannel { }
 
 public class SlackUser
 {

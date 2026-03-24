@@ -107,7 +107,7 @@ public class SlackPathCompleter : IArgumentCompleter
         if (segments.Length == 0 || (segments.Length == 1 && !normalized.EndsWith('/')))
         {
             var pattern = MakeWildcard(segments.Length == 1 ? segments[0] : "");
-            foreach (var name in new[] { "Channels", "Users", "Files" })
+            foreach (var name in new[] { "Channels", "DirectMessages", "Users", "Files" })
             {
                 if (pattern.IsMatch(name))
                     results.Add(MakeResult(inputPrefix + name, name, CompletionResultType.ProviderItem));

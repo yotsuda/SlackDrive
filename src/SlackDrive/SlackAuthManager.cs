@@ -75,7 +75,7 @@ public class SlackAuthManager
         
         // スコープ (カスタマイズ可能)
         string scopes = _settings.Scopes
-            ?? "channels:read channels:history groups:read groups:history users:read search:read";
+            ?? "channels:read channels:history groups:read groups:history im:read im:history mpim:read mpim:history users:read search:read";
         
         // 認証 URL 構築
         string state = Guid.NewGuid().ToString("N");

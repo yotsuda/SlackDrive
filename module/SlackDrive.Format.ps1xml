@@ -56,7 +56,30 @@
       </TableControl>
     </View>
 
-    <!-- SlackChannel -->
+    <!-- SlackChannelDetail (Get-Item) -->
+    <View>
+      <Name>SlackChannelDetail</Name>
+      <ViewSelectedBy>
+        <TypeName>SlackDrive.SlackChannelDetail</TypeName>
+      </ViewSelectedBy>
+      <ListControl>
+        <ListEntries>
+          <ListEntry>
+            <ListItems>
+              <ListItem><Label>Name</Label><PropertyName>Name</PropertyName></ListItem>
+              <ListItem><Label>Id</Label><PropertyName>Id</PropertyName></ListItem>
+              <ListItem><Label>Private</Label><PropertyName>IsPrivate</PropertyName></ListItem>
+              <ListItem><Label>Archived</Label><PropertyName>IsArchived</PropertyName></ListItem>
+              <ListItem><Label>Members</Label><PropertyName>MemberCount</PropertyName></ListItem>
+              <ListItem><Label>Topic</Label><PropertyName>Topic</PropertyName></ListItem>
+              <ListItem><Label>Purpose</Label><PropertyName>Purpose</PropertyName></ListItem>
+            </ListItems>
+          </ListEntry>
+        </ListEntries>
+      </ListControl>
+    </View>
+
+    <!-- SlackChannel (dir) -->
     <View>
       <Name>SlackChannel</Name>
       <ViewSelectedBy>
@@ -70,7 +93,6 @@
         <TableHeaders>
           <TableColumnHeader><Label> </Label><Width>2</Width><Alignment>Right</Alignment></TableColumnHeader>
           <TableColumnHeader><Label>Name</Label><Width>25</Width></TableColumnHeader>
-          <TableColumnHeader><Label>Members</Label><Width>8</Width><Alignment>Right</Alignment></TableColumnHeader>
           <TableColumnHeader><Label>Archived</Label><Width>9</Width></TableColumnHeader>
           <TableColumnHeader><Label>Topic</Label></TableColumnHeader>
         </TableHeaders>
@@ -81,7 +103,6 @@
                 <ScriptBlock>if ($_.IsPrivate) { "`u{1F512}" } else { "#" }</ScriptBlock>
               </TableColumnItem>
               <TableColumnItem><PropertyName>Name</PropertyName></TableColumnItem>
-              <TableColumnItem><PropertyName>MemberCount</PropertyName></TableColumnItem>
               <TableColumnItem><PropertyName>IsArchived</PropertyName></TableColumnItem>
               <TableColumnItem><PropertyName>Topic</PropertyName></TableColumnItem>
             </TableColumnItems>

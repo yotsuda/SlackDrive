@@ -8,6 +8,8 @@ public class SlackDriveInfo : PSDriveInfo, IDisposable
     private readonly object _clientLock = new();
     private readonly string? _token;
     private readonly string? _cookie;
+    private readonly ProxySettings? _proxy;
+    private readonly LoggingSettings? _logging;
     private volatile Func<CancellationToken, Task<string>>? _authenticator;
     private SlackAuthTestResponse? _authInfo;
 
@@ -31,7 +33,7 @@ public class SlackDriveInfo : PSDriveInfo, IDisposable
                         if (string.IsNullOrEmpty(token))
                             throw new InvalidOperationException("No token available. Provide Token or ClientId/ClientSecret.");
 
-                        _client = new SlackApiClient(token, _cookie);
+                        _client = new SlackApiClient(token, _cookie, _proxy, _logging);
                         _authInfo = _client.TestAuthAsync().GetAwaiter().GetResult();
                     }
                 }
@@ -70,19 +72,25 @@ public class SlackDriveInfo : PSDriveInfo, IDisposable
     internal SlackCache Cache { get; }
 
     /// <summary>直接トークン指定でマウント。</summary>
-    public SlackDriveInfo(PSDriveInfo driveInfo, string token, string? cookie = null)
+    public SlackDriveInfo(PSDriveInfo driveInfo, string token, string? cookie = null,
+        ProxySettings? proxy = null, LoggingSettings? logging = null)
         : base(driveInfo)
     {
         _token = token ?? throw new ArgumentNullException(nameof(token));
         _cookie = cookie;
+        _proxy = proxy;
+        _logging = logging;
         Cache = new SlackCache();
     }
 
     /// <summary>OAuth 遅延認証でマウント。認証は初回 API アクセス時に実行される。</summary>
-    public SlackDriveInfo(PSDriveInfo driveInfo, Func<CancellationToken, Task<string>> authenticator)
+    public SlackDriveInfo(PSDriveInfo driveInfo, Func<CancellationToken, Task<string>> authenticator,
+        ProxySettings? proxy = null, LoggingSettings? logging = null)
         : base(driveInfo)
     {
         _authenticator = authenticator ?? throw new ArgumentNullException(nameof(authenticator));
+        _proxy = proxy;
+        _logging = logging;
         Cache = new SlackCache();
     }
 

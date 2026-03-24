@@ -99,20 +99,21 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         var firstPart = parts[0].ToLower();
 
         if (parts.Length == 1)
-            return firstPart is "channels" or "users" or "files";
+            return firstPart is "channels" or "directmessages" or "users" or "files";
 
         if (parts.Length == 2)
         {
             return firstPart switch
             {
                 "channels" => GetChannelByName(parts[1]) != null,
+                "directmessages" => true, // DM は名前ベースで存在チェックしない
                 "users" => GetUserByName(parts[1]) != null,
                 _ => false
             };
         }
 
-        // Channels/<channel>/<ts> — message item
-        if (parts.Length == 3 && firstPart == "channels")
+        // Channels/<channel>/<ts> or DirectMessages/<dm>/<ts> — message item
+        if (parts.Length == 3 && firstPart is "channels" or "directmessages")
             return GetChannelByName(parts[1]) != null;
 
         return false;
@@ -125,7 +126,8 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
 
         var parts = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 1) return true;
-        if (parts.Length == 2 && parts[0].ToLower() == "channels") return true;
+        var cat = parts[0].ToLower();
+        if (parts.Length == 2 && cat is "channels" or "directmessages") return true;
         return false;
     }
 
@@ -145,7 +147,12 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         {
             case "channels" when parts.Length == 2:
                 var channel = GetChannelByName(parts[1]);
-                if (channel != null) WriteItemObject(channel, path, true);
+                if (channel != null)
+                {
+                    var detail = channel.ToDetail();
+                    FetchChannelDetails(detail);
+                    WriteItemObject(detail, path, true);
+                }
                 break;
             case "users" when parts.Length == 2:
                 var user = GetUserByName(parts[1]);
@@ -181,6 +188,12 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
                 case "channels":
                     if (parts.Length == 1)
                         WriteChannels(path);
+                    else if (parts.Length == 2)
+                        WriteChannelMessages(parts[1], path, first);
+                    break;
+                case "directmessages":
+                    if (parts.Length == 1)
+                        WriteDirectMessages(path);
                     else if (parts.Length == 2)
                         WriteChannelMessages(parts[1], path, first);
                     break;
@@ -221,6 +234,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         if (string.IsNullOrEmpty(normalized))
         {
             WriteItemObject("Channels", MakePath(path, "Channels"), true);
+            WriteItemObject("DirectMessages", MakePath(path, "DirectMessages"), true);
             WriteItemObject("Users", MakePath(path, "Users"), true);
             WriteItemObject("Files", MakePath(path, "Files"), true);
             return;
@@ -311,6 +325,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
     private void WriteRootChildren(string path)
     {
         WriteFolder(path, "Channels", "Channel list");
+        WriteFolder(path, "DirectMessages", "Direct messages");
         WriteFolder(path, "Users", "User list");
         WriteFolder(path, "Files", "File list");
     }
@@ -352,6 +367,109 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
             channel.Directory = directory;
             WriteItemObject(channel, MakePath(path, channel.Name), isContainer: true);
         }
+    }
+
+    private void WriteDirectMessages(string path)
+    {
+        var dms = FetchDirectMessages();
+
+        var directory = EnsureDrivePrefix(path);
+        foreach (var dm in dms.OrderByDescending(d => d.Created))
+        {
+            dm.Path = EnsureDrivePrefix(MakePath(path, dm.Name));
+            dm.Directory = directory;
+            WriteItemObject(dm, MakePath(path, dm.Name), isContainer: true);
+        }
+    }
+
+    private List<SlackChannel> FetchDirectMessages()
+    {
+        var result = new List<SlackChannel>();
+        var users = Drive.Cache.Users;
+        string? cursor = null;
+
+        while (true)
+        {
+            var queryParams = new Dictionary<string, string>
+            {
+                ["types"] = "im,mpim",
+                ["exclude_archived"] = "true",
+                ["limit"] = "200"
+            };
+            if (cursor != null) queryParams["cursor"] = cursor;
+
+            var doc = Drive.Client.GetAsync("conversations.list", queryParams).GetAwaiter().GetResult();
+            var root = doc.RootElement;
+
+            if (!root.GetProperty("ok").GetBoolean())
+            {
+                var error = root.TryGetProperty("error", out var e) ? e.GetString() : "Unknown error";
+                if (error == "ratelimited")
+                {
+                    System.Threading.Thread.Sleep(5000);
+                    continue;
+                }
+                throw new InvalidOperationException($"Failed to get direct messages: {error}");
+            }
+
+            foreach (var ch in root.GetProperty("channels").EnumerateArray())
+            {
+                var id = ch.GetProperty("id").GetString() ?? "";
+                var isMpim = ch.TryGetProperty("is_mpim", out var mpim) && mpim.GetBoolean();
+
+                // DM の表示名: ユーザー名 or mpim 名
+                string name;
+                if (isMpim)
+                {
+                    name = ch.TryGetProperty("name", out var n) ? n.GetString() ?? id : id;
+                }
+                else
+                {
+                    var userId = ch.TryGetProperty("user", out var u) ? u.GetString() ?? "" : "";
+                    name = users?.Values.FirstOrDefault(x => x.Id == userId)?.Name
+                        ?? ResolveUserNameById(userId) ?? userId;
+                }
+
+                result.Add(new SlackChannel
+                {
+                    Id = id,
+                    Name = name,
+                    IsPrivate = true,
+                    IsMember = true,
+                    Created = ch.TryGetProperty("created", out var cr)
+                        ? DateTimeOffset.FromUnixTimeSeconds(cr.GetInt64()).DateTime
+                        : DateTime.MinValue
+                });
+            }
+
+            cursor = root.TryGetProperty("response_metadata", out var meta) &&
+                     meta.TryGetProperty("next_cursor", out var c) &&
+                     !string.IsNullOrEmpty(c.GetString())
+                ? c.GetString()
+                : null;
+
+            if (cursor == null) break;
+        }
+
+        return result;
+    }
+
+    private string? ResolveUserNameById(string userId)
+    {
+        try
+        {
+            var queryParams = new Dictionary<string, string> { ["user"] = userId };
+            var doc = Drive.Client.GetAsync("users.info", queryParams).GetAwaiter().GetResult();
+            var root = doc.RootElement;
+            if (!root.GetProperty("ok").GetBoolean()) return null;
+            var user = root.GetProperty("user");
+            return user.TryGetProperty("profile", out var p) &&
+                   p.TryGetProperty("display_name", out var dn) &&
+                   !string.IsNullOrEmpty(dn.GetString())
+                ? dn.GetString()
+                : user.TryGetProperty("name", out var n) ? n.GetString() : null;
+        }
+        catch { return null; }
     }
 
     private void WriteUsers(string path)
@@ -757,6 +875,26 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
     private SlackChannel? GetChannelByName(string name)
     {
         return EnsureChannelsLoaded().TryGetValue(name, out var channel) ? channel : null;
+    }
+
+    private void FetchChannelDetails(SlackChannel channel)
+    {
+        try
+        {
+            var queryParams = new Dictionary<string, string> { ["channel"] = channel.Id };
+            var doc = Drive.Client.GetAsync("conversations.info", queryParams).GetAwaiter().GetResult();
+            var root = doc.RootElement;
+
+            if (!root.GetProperty("ok").GetBoolean()) return;
+
+            var ch = root.GetProperty("channel");
+            channel.MemberCount = ch.TryGetProperty("num_members", out var n) ? n.GetInt32() : 0;
+            channel.Topic = ch.TryGetProperty("topic", out var t) && t.TryGetProperty("value", out var tv)
+                ? tv.GetString() : channel.Topic;
+            channel.Purpose = ch.TryGetProperty("purpose", out var pu) && pu.TryGetProperty("value", out var pv)
+                ? pv.GetString() : channel.Purpose;
+        }
+        catch { /* best effort */ }
     }
 
     private SlackUser? GetUserByName(string name)
