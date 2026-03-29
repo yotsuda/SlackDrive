@@ -49,14 +49,36 @@ public class SlackMessage
 {
     [JsonIgnore] public string Path { get; set; } = "";
     [JsonIgnore] public string Directory { get; set; } = "";
-    public string Ts { get; set; } = "";
+
+    private string _ts = "";
+    public string Ts
+    {
+        get => _ts;
+        set
+        {
+            _ts = value;
+            Timestamp = SlackTs.ToLocal(value);
+        }
+    }
+
     public string UserId { get; set; } = "";
     public string? UserName { get; set; }
     public string Text { get; set; } = "";
-    public DateTime Timestamp { get; set; }
+    public DateTime Timestamp { get; private set; }
     public string? ThreadTs { get; set; }
     public int ReplyCount { get; set; }
     public List<SlackReaction>? Reactions { get; set; }
+}
+
+public static class SlackTs
+{
+    public static DateTime ToLocal(string ts)
+    {
+        if (string.IsNullOrEmpty(ts)) return DateTime.MinValue;
+        var dotIndex = ts.IndexOf('.');
+        var seconds = dotIndex > 0 ? long.Parse(ts[..dotIndex]) : long.Parse(ts);
+        return DateTimeOffset.FromUnixTimeSeconds(seconds).LocalDateTime;
+    }
 }
 
 public class SlackReaction

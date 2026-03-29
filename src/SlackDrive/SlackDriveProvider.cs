@@ -274,7 +274,6 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
             UserId = userId,
             UserName = userName,
             Text = ResolveSlackMentions(rawText, users),
-            Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)double.Parse(ts.Split('.')[0])).LocalDateTime,
             ReplyCount = 0,
             Directory = $"{PSDriveInfo.Name}:\\Channels"
         };
@@ -666,7 +665,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
                 UserId = userId,
                 UserName = userName,
                 Text = users != null ? ResolveSlackMentions(rawText, users) : rawText,
-                Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)double.Parse(ts.Split('.')[0])).LocalDateTime,
+
                 ThreadTs = m.TryGetProperty("thread_ts", out var tts) ? tts.GetString() : null,
                 ReplyCount = m.TryGetProperty("reply_count", out var rc) ? rc.GetInt32() : 0,
                 Directory = directory
@@ -728,7 +727,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
                 UserId = userId,
                 UserName = userName,
                 Text = ResolveSlackMentions(rawText, users),
-                Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)double.Parse(ts.Split('.')[0])).LocalDateTime,
+
                 ThreadTs = m.TryGetProperty("thread_ts", out var tts) ? tts.GetString() : null,
                 ReplyCount = m.TryGetProperty("reply_count", out var rc) ? rc.GetInt32() : 0,
                 Directory = directory
@@ -1519,7 +1518,6 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
                 UserId = userId,
                 UserName = ResolveUserName(users, userId),
                 Text = ResolveSlackMentions(rawText, users),
-                Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)double.Parse(msgTs.Split('.')[0])).LocalDateTime,
                 ThreadTs = m.TryGetProperty("thread_ts", out var tts) ? tts.GetString() : null,
                 ReplyCount = m.TryGetProperty("reply_count", out var rc) ? rc.GetInt32() : 0
             });
