@@ -728,11 +728,13 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         }
 
         var directory = EnsureDrivePrefix(path);
+        var tsValues = replies.Select(m => m.Ts).ToList();
         foreach (var message in replies)
         {
-            message.Path = EnsureDrivePrefix(MakePath(path, message.Ts));
+            var replyDisplayName = BuildMessageDisplayName(message, tsValues);
+            message.Path = EnsureDrivePrefix(MakePath(path, replyDisplayName));
             message.Directory = directory;
-            WriteItemObject(message, MakePath(path, message.Ts), isContainer: false);
+            WriteItemObject(message, MakePath(path, replyDisplayName), isContainer: false);
         }
     }
 
