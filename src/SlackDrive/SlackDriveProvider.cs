@@ -134,6 +134,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         if (parts.Length == 1) return true;
         var cat = parts[0].ToLower();
         if (parts.Length == 2 && cat is "channels" or "directmessages") return true;
+        if (parts.Length == 3 && cat is "channels" or "directmessages") return true;
         return false;
     }
 
@@ -167,6 +168,102 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         }
     }
 
+    protected override void NewItem(string path, string itemTypeName, object newItemValue)
+    {
+        var normalized = NormalizePath(path);
+        if (string.IsNullOrEmpty(normalized)) return;
+
+        var parts = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var cat = parts[0].ToLower();
+
+        if (cat is not "channels" and not "directmessages") return;
+
+        var text = newItemValue?.ToString();
+        if (string.IsNullOrEmpty(text))
+        {
+            WriteError(new ErrorRecord(
+                new ArgumentException("Message text is required. Use -Value \"your message\""),
+                "MessageTextRequired",
+                ErrorCategory.InvalidArgument,
+                path));
+            return;
+        }
+
+        if (parts.Length == 2)
+        {
+            // New-Item Channels\general -Value "text" → 新規投稿
+            var channel = GetChannelByName(parts[1]);
+            if (channel == null)
+            {
+                WriteError(new ErrorRecord(
+                    new ItemNotFoundException($"Channel not found: {parts[1]}"),
+                    "ChannelNotFound",
+                    ErrorCategory.ObjectNotFound,
+                    parts[1]));
+                return;
+            }
+
+            if (!ShouldProcess($"#{channel.Name}", $"Post message: {text}"))
+                return;
+
+            PostMessage(channel.Id, text, null);
+        }
+        else if (parts.Length == 3)
+        {
+            // New-Item Channels\general\<msg> -Value "text" → スレッド返信
+            var channel = GetChannelByName(parts[1]);
+            if (channel == null)
+            {
+                WriteError(new ErrorRecord(
+                    new ItemNotFoundException($"Channel not found: {parts[1]}"),
+                    "ChannelNotFound",
+                    ErrorCategory.ObjectNotFound,
+                    parts[1]));
+                return;
+            }
+
+            var threadTs = ResolveMessageIdentifier(channel.Id, parts[2]);
+            if (threadTs == null)
+            {
+                WriteError(new ErrorRecord(
+                    new ItemNotFoundException($"Message not found: {parts[2]}"),
+                    "MessageNotFound",
+                    ErrorCategory.ObjectNotFound,
+                    parts[2]));
+                return;
+            }
+
+            if (!ShouldProcess($"#{channel.Name} thread", $"Reply: {text}"))
+                return;
+
+            PostMessage(channel.Id, text, threadTs);
+        }
+    }
+
+    private void PostMessage(string channelId, string text, string? threadTs)
+    {
+        var body = new Dictionary<string, object> { ["channel"] = channelId, ["text"] = text };
+        if (threadTs != null) body["thread_ts"] = threadTs;
+
+        var doc = Drive.Client.PostAsync("chat.postMessage", body).GetAwaiter().GetResult();
+        var root = doc.RootElement;
+
+        if (!root.GetProperty("ok").GetBoolean())
+        {
+            var error = root.TryGetProperty("error", out var e) ? e.GetString() : "Unknown error";
+            WriteError(new ErrorRecord(
+                new InvalidOperationException($"Failed to post message: {error}"),
+                "PostMessageFailed",
+                ErrorCategory.WriteError,
+                channelId));
+            return;
+        }
+
+        // 投稿されたメッセージの ts を返す
+        var ts = root.GetProperty("ts").GetString() ?? "";
+        WriteItemObject(ts, ts, false);
+    }
+
     protected override void GetChildItems(string path, bool recurse)
     {
         var normalized = NormalizePath(path);
@@ -190,12 +287,16 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
                         WriteChannels(path);
                     else if (parts.Length == 2)
                         WriteChannelMessages(parts[1], path, first);
+                    else if (parts.Length == 3)
+                        WriteThreadMessages(parts[1], parts[2], path);
                     break;
                 case "directmessages":
                     if (parts.Length == 1)
                         WriteDirectMessages(path);
                     else if (parts.Length == 2)
                         WriteChannelMessages(parts[1], path, first);
+                    else if (parts.Length == 3)
+                        WriteThreadMessages(parts[1], parts[2], path);
                     break;
                 case "users":
                     if (parts.Length == 1)
@@ -572,9 +673,53 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         {
             var displayName = BuildMessageDisplayName(message, tsValues);
             message.Path = EnsureDrivePrefix(MakePath(path, displayName));
-            WriteItemObject(message, MakePath(path, displayName), isContainer: false);
+            WriteItemObject(message, MakePath(path, displayName), isContainer: true);
         }
     }
+
+    private void WriteThreadMessages(string channelName, string displayName, string path)
+    {
+        var channel = GetChannelByName(channelName);
+        if (channel == null)
+        {
+            WriteError(new ErrorRecord(
+                new ItemNotFoundException($"Channel not found: {channelName}"),
+                "ChannelNotFound",
+                ErrorCategory.ObjectNotFound,
+                channelName));
+            return;
+        }
+
+        // 表示名から元の ts を逆引き
+        var ts = ResolveMessageIdentifier(channel.Id, displayName);
+        if (ts == null)
+        {
+            WriteError(new ErrorRecord(
+                new ItemNotFoundException($"Message not found: {displayName}"),
+                "MessageNotFound",
+                ErrorCategory.ObjectNotFound,
+                displayName));
+            return;
+        }
+
+        var messages = FetchThread(channel.Id, ts);
+        // 先頭メッセージ（親）はスキップして返信のみ表示
+        var replies = messages.Skip(1).ToList();
+        if (replies.Count == 0)
+        {
+            WriteWarning("No replies in this thread.");
+            return;
+        }
+
+        var directory = EnsureDrivePrefix(path);
+        foreach (var message in replies)
+        {
+            message.Path = EnsureDrivePrefix(MakePath(path, message.Ts));
+            message.Directory = directory;
+            WriteItemObject(message, MakePath(path, message.Ts), isContainer: false);
+        }
+    }
+
 
     private void WriteFiles(string path, int limit = 100)
     {
@@ -1111,16 +1256,17 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
     }
 
     /// <summary>
-    /// メッセージの表示名を生成: {shortTs}_{MMdd_HHmm}_{author}_{sentence}
+    /// メッセージの表示名を生成: {MMdd}_{HHmm}_{shortTs}_{author}_{sentence}
     /// </summary>
     private static string BuildMessageDisplayName(SlackMessage msg, List<string> allTs)
     {
         var shortTs = ComputeShortTs(msg.Ts, allTs);
-        var date = msg.Timestamp.ToString("MMdd_HHmm");
+        var date = msg.Timestamp.ToString("MMdd");
+        var time = msg.Timestamp.ToString("HHmm");
         var author = msg.UserName ?? msg.UserId;
         var sentence = SanitizeForPath(FirstSentence(msg.Text, 30));
 
-        return $"{shortTs}_{date}_{author}_{sentence}";
+        return $"{date}_{time}_{shortTs}_{author}_{sentence}";
     }
 
     /// <summary>
@@ -1171,7 +1317,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
     /// <summary>
     /// メッセージ識別子（生 ts または表示名）から元の ts を解決する。
     /// 生 ts: "1765763994.024389" → そのまま返す
-    /// 表示名: "3994_0215_1030_author_text" → 短縮 ts のサフィックスマッチで特定
+    /// 表示名: "0329_0820_4959_author_text" → 3番目のセグメント (shortTs) でサフィックスマッチ
     /// </summary>
     private string? ResolveMessageIdentifier(string channelId, string identifier)
     {
@@ -1179,9 +1325,9 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         if (Regex.IsMatch(identifier, @"^\d+\.\d+$"))
             return identifier;
 
-        // 表示名の先頭部分 (最初の _ まで) が短縮 ts
-        var firstUnderscore = identifier.IndexOf('_');
-        var shortTs = firstUnderscore > 0 ? identifier[..firstUnderscore] : identifier;
+        // 表示名の3番目のセグメント (index 2) が shortTs
+        var segments = identifier.Split('_');
+        var shortTs = segments.Length >= 3 ? segments[2] : segments[0];
 
         var queryParams = new Dictionary<string, string>
         {
