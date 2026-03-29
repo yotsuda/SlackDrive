@@ -1452,6 +1452,8 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         return messages;
     }
 
+    private const string Separator = "────────────────────────────────────────";
+
     private string BuildMarkdown(string channelName, string channelId, List<SlackMessage> messages)
     {
         if (messages.Count == 0)
@@ -1462,33 +1464,23 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         var baseUrl = Drive.WorkspaceUrl.TrimEnd('/');
         var tsForUrl = parent.Ts.Replace(".", "");
         var permalink = $"{baseUrl}/archives/{channelId}/p{tsForUrl}";
-        var replyInfo = messages.Count > 1 ? $" | Replies: {messages.Count - 1}" : "";
 
-        // メタデータヘッダー
-        sb.AppendLine($"# #{channelName}");
-        sb.AppendLine();
-        sb.AppendLine($"{parent.Timestamp:yyyy-MM-dd HH:mm} | @{parent.UserName}{replyInfo} | {permalink}");
-        sb.AppendLine();
-        sb.AppendLine("---");
+        // ヘッダー
+        sb.AppendLine($"#{channelName} | {permalink}");
         sb.AppendLine();
 
-        // 親投稿
-        sb.AppendLine($"**{parent.UserName}** ({parent.Timestamp:yyyy-MM-dd HH:mm}):");
-        sb.Append(parent.Text);
-
-        if (messages.Count > 1)
+        // 全投稿を同じ形式で表示
+        for (int i = 0; i < messages.Count; i++)
         {
-            sb.AppendLine();
-            sb.AppendLine();
-            sb.AppendLine("---");
-
-            for (int i = 1; i < messages.Count; i++)
+            var msg = messages[i];
+            sb.AppendLine($"{msg.UserName} ({msg.Timestamp:yyyy-MM-dd HH:mm}):");
+            sb.Append(msg.Text);
+            if (i < messages.Count - 1)
             {
-                var reply = messages[i];
                 sb.AppendLine();
                 sb.AppendLine();
-                sb.AppendLine($"**{reply.UserName}** ({reply.Timestamp:yyyy-MM-dd HH:mm}):");
-                sb.Append(reply.Text);
+                sb.AppendLine(Separator);
+                sb.AppendLine();
             }
         }
 
