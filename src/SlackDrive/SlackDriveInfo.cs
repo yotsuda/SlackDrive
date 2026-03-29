@@ -12,6 +12,7 @@ public class SlackDriveInfo : PSDriveInfo, IDisposable
     private readonly LoggingSettings? _logging;
     private volatile Func<CancellationToken, Task<string>>? _authenticator;
     private SlackAuthTestResponse? _authInfo;
+    private CancellationTokenSource? _authCts;
 
     public SlackApiClient Client
     {
@@ -26,8 +27,16 @@ public class SlackDriveInfo : PSDriveInfo, IDisposable
                         var token = _token;
                         if (token == null && _authenticator != null)
                         {
-                            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
-                            token = _authenticator(cts.Token).GetAwaiter().GetResult();
+                            _authCts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+                            try
+                            {
+                                token = _authenticator(_authCts.Token).GetAwaiter().GetResult();
+                            }
+                            finally
+                            {
+                                _authCts.Dispose();
+                                _authCts = null;
+                            }
                             _authenticator = null;
                         }
                         if (string.IsNullOrEmpty(token))
@@ -93,6 +102,9 @@ public class SlackDriveInfo : PSDriveInfo, IDisposable
         _logging = logging;
         Cache = new SlackCache();
     }
+
+    /// <summary>進行中の認証をキャンセルする。StopProcessing から呼ばれる。</summary>
+    public void CancelAuthentication() => _authCts?.Cancel();
 
     private SlackAuthTestResponse EnsureAuthInfo()
     {

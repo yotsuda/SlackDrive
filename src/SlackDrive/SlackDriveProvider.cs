@@ -55,6 +55,12 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         return base.InitializeDefaultDrives();
     }
 
+    protected override void StopProcessing()
+    {
+        if (PSDriveInfo is SlackDriveInfo slackDrive)
+            slackDrive.CancelAuthentication();
+    }
+
     #endregion
 
     #region Path Operations
@@ -475,9 +481,14 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
     private void WriteUsers(string path)
     {
         if (Force)
+        {
             Drive.Cache.ClearUsers();
+            try { System.IO.File.Delete(GetUsersCacheFilePath()); } catch { }
+        }
 
         var users = EnsureUsersLoaded();
+
+        WarnIfUsersCacheStale();
 
         var directory = EnsureDrivePrefix(path);
         foreach (var user in users.Values.Where(u => !u.IsDeleted).OrderBy(u => u.Name))
@@ -715,6 +726,66 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         return result;
     }
 
+    #region Users Disk Cache
+
+    private static readonly JsonSerializerOptions _usersCacheJsonOptions = new()
+    {
+        WriteIndented = false,
+        PropertyNameCaseInsensitive = true
+    };
+
+    private string GetUsersCacheFilePath()
+    {
+        var folder = SlackDriveConfigManager.GetConfigFolderPath();
+        return System.IO.Path.Combine(folder, $"users-cache-{Drive.TeamId}.json");
+    }
+
+    private Dictionary<string, SlackUser>? LoadUsersDiskCache()
+    {
+        var path = GetUsersCacheFilePath();
+        if (!System.IO.File.Exists(path)) return null;
+
+        try
+        {
+            var json = System.IO.File.ReadAllText(path);
+            var list = JsonSerializer.Deserialize<List<SlackUser>>(json, _usersCacheJsonOptions);
+            if (list == null || list.Count == 0) return null;
+            return list.ToDictionary(u => u.Name);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private void SaveUsersDiskCache(Dictionary<string, SlackUser> users)
+    {
+        try
+        {
+            var path = GetUsersCacheFilePath();
+            var folder = System.IO.Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(folder) && !System.IO.Directory.Exists(folder))
+                System.IO.Directory.CreateDirectory(folder);
+            var json = JsonSerializer.Serialize(users.Values.ToList(), _usersCacheJsonOptions);
+            System.IO.File.WriteAllText(path, json);
+        }
+        catch { /* best effort */ }
+    }
+
+    private void WarnIfUsersCacheStale()
+    {
+        var path = GetUsersCacheFilePath();
+        if (!System.IO.File.Exists(path)) return;
+
+        var age = DateTime.UtcNow - System.IO.File.GetLastWriteTimeUtc(path);
+        if (age > TimeSpan.FromDays(7))
+        {
+            WriteWarning($"Users cache is {age.Days} days old. Run 'ls Slack:\\Users -Force' to refresh.");
+        }
+    }
+
+    #endregion
+
     /// <summary>
     /// client.userBoot (Slack Web Client 内部 API) からチャンネル・ユーザーを取得。
     /// conversations.list が enterprise_is_restricted で失敗する場合のフォールバック。
@@ -857,6 +928,14 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         var users = Drive.Cache.Users;
         if (users != null) return users;
 
+        // ディスクキャッシュから読み込み
+        users = LoadUsersDiskCache();
+        if (users != null)
+        {
+            Drive.Cache.Users = users;
+            return users;
+        }
+
         try
         {
             users = FetchUsers();
@@ -869,6 +948,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         }
 
         Drive.Cache.Users = users;
+        SaveUsersDiskCache(users);
         return users;
     }
 
