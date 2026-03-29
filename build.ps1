@@ -22,7 +22,7 @@ foreach ($file in @('SlackDrive.dll', 'SlackDrive.pdb')) {
 
 Write-Host "`nBuild completed. Module is ready at: $modulePath" -ForegroundColor Green
 
-# Deploy
+# Deploy (exclude dev/debug files)
 Write-Host "`nDeploying to $deployPath..." -ForegroundColor Cyan
 
 if (-not (Test-Path $deployPath)) {
@@ -30,7 +30,8 @@ if (-not (Test-Path $deployPath)) {
     Write-Host "  Created $deployPath" -ForegroundColor Yellow
 }
 
-foreach ($file in Get-ChildItem $modulePath -File) {
+$exclude = @('*.dev.psd1', '*.pdb')
+foreach ($file in Get-ChildItem $modulePath -File -Exclude $exclude) {
     try {
         Copy-Item $file.FullName $deployPath -Force
         Write-Host "  Deployed $($file.Name)" -ForegroundColor Green
@@ -39,6 +40,15 @@ foreach ($file in Get-ChildItem $modulePath -File) {
         Write-Host "  Failed to copy $($file.Name): $($_.Exception.Message)" -ForegroundColor Red
         Write-Host "  (File may be locked by another PowerShell session)" -ForegroundColor Yellow
     }
+}
+
+# Clean up stale files from previous builds
+foreach ($stale in Get-ChildItem $deployPath -File | Where-Object { $_.Name -match '\.(dev\.psd1|pdb|deps\.json)$' }) {
+    try {
+        Remove-Item $stale.FullName -Force
+        Write-Host "  Removed stale $($stale.Name)" -ForegroundColor Yellow
+    }
+    catch { }
 }
 
 Write-Host "`nDeployment completed." -ForegroundColor Green
