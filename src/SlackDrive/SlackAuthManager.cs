@@ -67,8 +67,8 @@ public class SlackAuthManager
         if (string.IsNullOrEmpty(_settings.ClientId))
             throw new InvalidOperationException("ClientId is required for OAuth flow.");
 
-        // デフォルトのリダイレクト URL
-        string redirectUrl = _settings.RedirectUrl ?? "http://localhost:8765/slack/callback";
+        // デフォルトのリダイレクト URL (GitHub Pages → localhost リレー)
+        string redirectUrl = _settings.RedirectUrl ?? "https://yotsuda.github.io/SlackDrive/oauth/callback.html";
 
         // PKCE 用の code_verifier 生成
         string codeVerifier = GenerateCodeVerifier();
@@ -97,9 +97,18 @@ public class SlackAuthManager
 
     private string WaitForAuthorizationCode(string redirectUrl, string expectedState, string authUrl, CancellationToken ct)
     {
+        // GitHub Pages リレー等の外部 URL の場合は localhost:8765 で待機
         var uri = new Uri(redirectUrl);
-        var listenerPrefix = $"{uri.Scheme}://{uri.Host}:{uri.Port}{uri.AbsolutePath}";
-        if (!listenerPrefix.EndsWith("/")) listenerPrefix += "/";
+        string listenerPrefix;
+        if (uri.Host != "localhost" && uri.Host != "127.0.0.1")
+        {
+            listenerPrefix = "http://localhost:8765/slack/callback/";
+        }
+        else
+        {
+            listenerPrefix = $"{uri.Scheme}://{uri.Host}:{uri.Port}{uri.AbsolutePath}";
+            if (!listenerPrefix.EndsWith("/")) listenerPrefix += "/";
+        }
         
         using var listener = new HttpListener();
         try

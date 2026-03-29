@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SlackDrive - OAuth Callback</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-align: center; padding: 60px 20px; color: #333; }
+  .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid #ddd; border-top-color: #4A154B; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 10px; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .status { font-size: 18px; margin: 20px 0; }
+  .error { color: #d32f2f; }
+  code { background: #f5f5f5; padding: 2px 8px; border-radius: 4px; font-size: 14px; }
+</style>
+</head>
+<body>
+<h2>SlackDrive</h2>
+<div id="status" class="status"><span class="spinner"></span>Redirecting to SlackDrive...</div>
+<script>
+(function() {
+  var params = window.location.search;
+  if (!params) {
+    document.getElementById('status').innerHTML = '<span class="error">No OAuth parameters received.</span>';
+    return;
+  }
+  var localUrl = 'http://localhost:8765/slack/callback' + params;
+  window.location.href = localUrl;
+  // If redirect doesn't work (e.g. SlackDrive not running), show manual instructions after 3 seconds
+  setTimeout(function() {
+    document.getElementById('status').innerHTML =
+      '<span class="error">Could not connect to SlackDrive.</span>' +
+      '<p>Make sure SlackDrive is running and waiting for the OAuth callback.</p>' +
+      '<p>Expected URL: <code>' + localUrl + '</code></p>';
+  }, 3000);
+})();
+</script>
+</body>
+</html>
