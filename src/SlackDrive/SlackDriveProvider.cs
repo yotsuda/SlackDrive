@@ -1376,7 +1376,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         }
 
         var thread = FetchThread(channel.Id, ts);
-        var markdown = BuildMarkdown(channelName, channel.Id, thread);
+        var markdown = BuildMarkdown(channel, thread);
         return new SlackContentReader(markdown);
     }
 
@@ -1454,7 +1454,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
 
     private const string Separator = "────────────────────────────────────────";
 
-    private string BuildMarkdown(string channelName, string channelId, List<SlackMessage> messages)
+    private string BuildMarkdown(SlackChannel channel, List<SlackMessage> messages)
     {
         if (messages.Count == 0)
             return "(empty)";
@@ -1463,10 +1463,11 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         var parent = messages[0];
         var baseUrl = Drive.WorkspaceUrl.TrimEnd('/');
         var tsForUrl = parent.Ts.Replace(".", "");
-        var permalink = $"{baseUrl}/archives/{channelId}/p{tsForUrl}";
+        var permalink = $"{baseUrl}/archives/{channel.Id}/p{tsForUrl}";
+        var prefix = channel.IsPrivate ? "\U0001F512" : "#";
 
         // ヘッダー
-        sb.AppendLine($"#{channelName} | {permalink}");
+        sb.AppendLine($"{prefix}{channel.Name} | {permalink}");
         sb.AppendLine();
 
         // 全投稿を同じ形式で表示
