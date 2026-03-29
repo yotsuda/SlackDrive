@@ -106,6 +106,9 @@ public class SlackDriveInfo : PSDriveInfo, IDisposable
     /// <summary>進行中の認証をキャンセルする。StopProcessing から呼ばれる。</summary>
     public void CancelAuthentication() => _authCts?.Cancel();
 
+    /// <summary>バックグラウンドでのユーザーフェッチタスク。</summary>
+    internal Task? UsersFetchTask { get; set; }
+
     private SlackAuthTestResponse EnsureAuthInfo()
     {
         if (_authInfo != null) return _authInfo;

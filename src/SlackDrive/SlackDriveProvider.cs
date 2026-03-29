@@ -255,7 +255,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
                     WriteItemObject(ch.Name, MakePath(path, ch.Name), true);
                 break;
             case "users" when parts.Length == 1:
-                foreach (var u in EnsureUsersLoaded().Values.Where(u => !u.IsDeleted).OrderBy(u => u.Name))
+                foreach (var u in EnsureUsersLoadedSync().Values.Where(u => !u.IsDeleted).OrderBy(u => u.Name))
                     WriteItemObject(u.Name, MakePath(path, u.Name), false);
                 break;
         }
@@ -483,10 +483,17 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         if (Force)
         {
             Drive.Cache.ClearUsers();
+            Drive.UsersFetchTask = null;
             try { System.IO.File.Delete(GetUsersCacheFilePath()); } catch { }
         }
 
         var users = EnsureUsersLoaded();
+
+        if (users == null)
+        {
+            WriteWarning("Building users cache in background. This may take a few minutes. Run 'ls' again shortly.");
+            return;
+        }
 
         WarnIfUsersCacheStale();
 
@@ -737,7 +744,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
     private string GetUsersCacheFilePath()
     {
         var folder = SlackDriveConfigManager.GetConfigFolderPath();
-        return System.IO.Path.Combine(folder, $"users-cache-{Drive.TeamId}.json");
+        return System.IO.Path.Combine(folder, $"users-cache-{Drive.TeamId}.jsonl");
     }
 
     private Dictionary<string, SlackUser>? LoadUsersDiskCache()
@@ -745,17 +752,23 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         var path = GetUsersCacheFilePath();
         if (!System.IO.File.Exists(path)) return null;
 
+        var result = new Dictionary<string, SlackUser>();
         try
         {
-            var json = System.IO.File.ReadAllText(path);
-            var list = JsonSerializer.Deserialize<List<SlackUser>>(json, _usersCacheJsonOptions);
-            if (list == null || list.Count == 0) return null;
-            return list.ToDictionary(u => u.Name);
+            foreach (var line in System.IO.File.ReadLines(path))
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                try
+                {
+                    var user = JsonSerializer.Deserialize<SlackUser>(line, _usersCacheJsonOptions);
+                    if (user != null)
+                        result[user.Name] = user;
+                }
+                catch { /* skip malformed line */ }
+            }
         }
-        catch
-        {
-            return null;
-        }
+        catch { /* file read error */ }
+        return result.Count > 0 ? result : null;
     }
 
     private void SaveUsersDiskCache(Dictionary<string, SlackUser> users)
@@ -766,8 +779,9 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
             var folder = System.IO.Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(folder) && !System.IO.Directory.Exists(folder))
                 System.IO.Directory.CreateDirectory(folder);
-            var json = JsonSerializer.Serialize(users.Values.ToList(), _usersCacheJsonOptions);
-            System.IO.File.WriteAllText(path, json);
+            using var writer = new System.IO.StreamWriter(path, false, System.Text.Encoding.UTF8);
+            foreach (var user in users.Values)
+                writer.WriteLine(JsonSerializer.Serialize(user, _usersCacheJsonOptions));
         }
         catch { /* best effort */ }
     }
@@ -924,7 +938,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         return result;
     }
 
-    private Dictionary<string, SlackUser> EnsureUsersLoaded()
+    private Dictionary<string, SlackUser>? EnsureUsersLoaded()
     {
         var users = Drive.Cache.Users;
         if (users != null) return users;
@@ -937,20 +951,47 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
             return users;
         }
 
-        try
+        // バックグラウンドタスクが完了していればキャッシュを確認
+        if (Drive.UsersFetchTask is { IsCompleted: true })
         {
-            users = FetchUsers();
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("enterprise_is_restricted"))
-        {
-            // client.userBoot でチャンネルを取得した際に Users もキャッシュ済みかもしれない
+            Drive.UsersFetchTask = null;
             users = Drive.Cache.Users;
-            if (users == null) throw;
+            if (users != null) return users;
         }
 
-        Drive.Cache.Users = users;
-        SaveUsersDiskCache(users);
-        return users;
+        // バックグラウンドフェッチを開始
+        if (Drive.UsersFetchTask == null)
+        {
+            Drive.UsersFetchTask = Task.Run(() =>
+            {
+                Dictionary<string, SlackUser> fetched;
+                try
+                {
+                    fetched = FetchUsers();
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("enterprise_is_restricted"))
+                {
+                    fetched = Drive.Cache.Users!;
+                    if (fetched == null) throw;
+                }
+                Drive.Cache.Users = fetched;
+                SaveUsersDiskCache(fetched);
+            });
+        }
+
+        return null;
+    }
+
+    /// <summary>同期的にユーザーをロード（タブ補完・メンション解決用）。</summary>
+    private Dictionary<string, SlackUser> EnsureUsersLoadedSync()
+    {
+        var users = EnsureUsersLoaded();
+        if (users != null) return users;
+
+        // バックグラウンドタスクの完了を待つ
+        Drive.UsersFetchTask?.Wait();
+        Drive.UsersFetchTask = null;
+        return Drive.Cache.Users ?? new Dictionary<string, SlackUser>();
     }
 
     private SlackChannel? GetChannelByName(string name)
@@ -980,7 +1021,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
 
     private SlackUser? GetUserByName(string name)
     {
-        return EnsureUsersLoaded().TryGetValue(name, out var user) ? user : null;
+        return EnsureUsersLoadedSync().TryGetValue(name, out var user) ? user : null;
     }
 
     private string ResolveUserName(Dictionary<string, SlackUser> users, string userId)
@@ -1058,7 +1099,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
                 if (parts.Length == 1)
                 {
                     writer.WriteLine("Name,Id,DisplayName,RealName,IsBot,IsAdmin,IsDeleted,Email");
-                    foreach (var u in EnsureUsersLoaded().Values.OrderBy(u => u.Name))
+                    foreach (var u in EnsureUsersLoadedSync().Values.OrderBy(u => u.Name))
                         writer.WriteLine($"{Csv(u.Name)},{Csv(u.Id)},{Csv(u.DisplayName)},{Csv(u.RealName)},{u.IsBot},{u.IsAdmin},{u.IsDeleted},{Csv(u.Email)}");
                 }
                 break;
@@ -1225,7 +1266,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
             throw new InvalidOperationException($"Failed to get thread: {error}");
         }
 
-        var users = EnsureUsersLoaded();
+        var users = EnsureUsersLoadedSync();
 
         var messages = new List<SlackMessage>();
         foreach (var m in root.GetProperty("messages").EnumerateArray())
