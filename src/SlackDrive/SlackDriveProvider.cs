@@ -431,7 +431,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         pso.Properties.Add(new PSNoteProperty("Description", description));
         pso.Properties.Add(new PSNoteProperty("Path", EnsureDrivePrefix(MakePath(parentPath, name))));
         pso.Properties.Add(new PSNoteProperty("Directory", directory));
-        WriteItemObject(pso, MakePath(parentPath, name), isContainer: true);
+        WriteItemObject(pso, EnsureDrivePrefix(MakePath(parentPath, name)), isContainer: true);
     }
 
     private void WriteChannels(string path)
@@ -457,7 +457,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         {
             channel.Path = EnsureDrivePrefix(MakePath(path, channel.Name));
             channel.Directory = directory;
-            WriteItemObject(channel, MakePath(path, channel.Name), isContainer: true);
+            WriteItemObject(channel, EnsureDrivePrefix(MakePath(path, channel.Name)), isContainer: true);
         }
     }
 
@@ -470,7 +470,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         {
             dm.Path = EnsureDrivePrefix(MakePath(path, dm.Name));
             dm.Directory = directory;
-            WriteItemObject(dm, MakePath(path, dm.Name), isContainer: true);
+            WriteItemObject(dm, EnsureDrivePrefix(MakePath(path, dm.Name)), isContainer: true);
         }
     }
 
@@ -588,7 +588,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         {
             user.Path = EnsureDrivePrefix(MakePath(path, user.Name));
             user.Directory = directory;
-            WriteItemObject(user, MakePath(path, user.Name), isContainer: false);
+            WriteItemObject(user, EnsureDrivePrefix(MakePath(path, user.Name)), isContainer: false);
         }
     }
 
@@ -664,7 +664,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         {
             var displayName = BuildMessageDisplayName(message, tsValues);
             message.Path = EnsureDrivePrefix(MakePath(path, displayName));
-            WriteItemObject(message, MakePath(path, displayName), isContainer: true);
+            WriteItemObject(message, EnsureDrivePrefix(MakePath(path, displayName)), isContainer: true);
         }
     }
 
@@ -709,7 +709,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
             var replyDisplayName = BuildMessageDisplayName(message, tsValues);
             message.Path = EnsureDrivePrefix(MakePath(path, replyDisplayName));
             message.Directory = directory;
-            WriteItemObject(message, MakePath(path, replyDisplayName), isContainer: false);
+            WriteItemObject(message, EnsureDrivePrefix(MakePath(path, replyDisplayName)), isContainer: false);
         }
     }
 
@@ -749,7 +749,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
 
             file.Path = EnsureDrivePrefix(MakePath(path, file.Name));
             file.Directory = directory;
-            WriteItemObject(file, MakePath(path, file.Name), isContainer: false);
+            WriteItemObject(file, EnsureDrivePrefix(MakePath(path, file.Name)), isContainer: false);
         }
     }
 
