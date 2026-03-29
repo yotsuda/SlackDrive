@@ -359,11 +359,18 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
 
         var parts = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
 
-        switch (parts[0].ToLower())
+        var cat = parts[0].ToLower();
+
+        switch (cat)
         {
             case "channels" when parts.Length == 1:
                 foreach (var ch in EnsureChannelsLoaded().Values.OrderBy(c => c.Name))
                     WriteItemObject(ch.Name, MakePath(path, ch.Name), true);
+                break;
+            case "channels" when parts.Length >= 2:
+            case "directmessages" when parts.Length >= 2:
+                // メッセージ一覧・スレッド返信は GetChildItems にフォールバック
+                GetChildItems(path, false);
                 break;
             case "users" when parts.Length == 1:
                 foreach (var u in EnsureUsersLoadedSync().Values.Where(u => !u.IsDeleted).OrderBy(u => u.Name))
