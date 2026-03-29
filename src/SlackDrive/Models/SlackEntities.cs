@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace SlackDrive;
@@ -77,6 +78,37 @@ public class SlackFile
     public string? UrlPrivate { get; set; }
     public DateTime Created { get; set; }
     public string UserId { get; set; } = "";
+}
+
+/// <summary>search.modules (module=people) の item を表す DTO。</summary>
+public class SlackPeopleResult : SlackUser
+{
+    public new string Path { get; set; } = "";
+    public new string Directory { get; set; } = "";
+
+    public SlackPeopleResult(string directory, JsonElement item)
+    {
+        var profile = item.GetProperty("profile");
+
+        Id = item.GetProperty("id").GetString() ?? "";
+        Name = item.GetProperty("username").GetString() ?? "";
+        RealName = profile.TryGetProperty("real_name", out var rn) ? rn.GetString() ?? "" : "";
+        DisplayName = profile.TryGetProperty("display_name", out var dn) ? dn.GetString() ?? "" : "";
+        Email = profile.TryGetProperty("email", out var em) ? em.GetString() : null;
+
+        Directory = directory;
+        Path = $"{directory}\\{Name}";
+    }
+
+    /// <summary>メモリキャッシュ追加用に SlackUser へ変換。</summary>
+    public SlackUser ToSlackUser() => new()
+    {
+        Id = Id,
+        Name = Name,
+        RealName = RealName,
+        DisplayName = DisplayName,
+        Email = Email
+    };
 }
 
 public class SlackSearchResult
