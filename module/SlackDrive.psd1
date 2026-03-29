@@ -10,7 +10,7 @@
     NestedModules = @('SlackDrive.psm1')
     FormatsToProcess = @('SlackDrive.Format.ps1xml')
     FunctionsToExport = @('New-SlackDrive', 'Set-SlackDriveSecret')
-    CmdletsToExport = @('Import-SlackConfig', 'Edit-SlackConfig', 'Get-SlackConfigPath', 'Update-SlackCache', 'Open-SlackPage', 'Join-SlackChannel', 'Exit-SlackChannel', 'Find-SlackUser')
+    CmdletsToExport = @('Import-SlackConfig', 'Edit-SlackConfig', 'Get-SlackConfigPath', 'Update-SlackCache', 'Open-SlackPage', 'Join-SlackChannel', 'Exit-SlackChannel', 'Find-SlackUser', 'Find-SlackMessage')
     AliasesToExport = @()
     PrivateData = @{
         PSData = @{
