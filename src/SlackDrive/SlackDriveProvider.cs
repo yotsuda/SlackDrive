@@ -1519,7 +1519,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
                 UserId = userId,
                 UserName = ResolveUserName(users, userId),
                 Text = ResolveSlackMentions(rawText, users),
-                Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)double.Parse(msgTs.Split('.')[0])).DateTime,
+                Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)double.Parse(msgTs.Split('.')[0])).LocalDateTime,
                 ThreadTs = m.TryGetProperty("thread_ts", out var tts) ? tts.GetString() : null,
                 ReplyCount = m.TryGetProperty("reply_count", out var rc) ? rc.GetInt32() : 0
             });
