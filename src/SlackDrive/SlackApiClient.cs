@@ -84,24 +84,6 @@ public class SlackApiClient : IDisposable
         return JsonDocument.Parse(responseContent);
     }
 
-    public async Task<JsonDocument> PostFormAsync(string endpoint, Dictionary<string, string> fields)
-    {
-        Log(LoggingLevel.Verbose, $"POST {endpoint} (form-data)");
-        var sw = Stopwatch.StartNew();
-
-        var content = new MultipartFormDataContent();
-        content.Add(new StringContent(_token), "token");
-        foreach (var kvp in fields)
-            content.Add(new StringContent(kvp.Value), kvp.Key);
-
-        var response = await _httpClient.PostAsync(endpoint, content);
-        sw.Stop();
-        Log(LoggingLevel.Verbose, $"  {(int)response.StatusCode} {response.StatusCode} ({sw.ElapsedMilliseconds}ms)");
-
-        var responseContent = await response.Content.ReadAsStringAsync();
-        return JsonDocument.Parse(responseContent);
-    }
-
     public async Task<SlackAuthTestResponse> TestAuthAsync()
     {
         var doc = await GetAsync("auth.test");
