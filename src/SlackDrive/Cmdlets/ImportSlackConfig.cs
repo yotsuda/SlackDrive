@@ -17,6 +17,13 @@ public class ImportSlackConfigCommand : PSCmdlet
             return;
         }
 
+        // カレントドライブが Slack の場合、FileSystem に退避してから削除
+        {
+            using var ps = PowerShell.Create(RunspaceMode.CurrentRunspace);
+            ps.AddScript("if ((Get-Location).Provider.Name -eq 'Slack') { Set-Location $env:USERPROFILE }");
+            ps.Invoke();
+        }
+
         // Remove existing Slack drives that match config names
         foreach (var driveSettings in config.PSDrives)
         {
