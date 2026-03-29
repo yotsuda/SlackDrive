@@ -435,7 +435,10 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
     private void WriteChannels(string path)
     {
         if (Force)
+        {
             Drive.Cache.ClearChannels();
+            try { System.IO.File.Delete(GetChannelsCacheFilePath()); } catch { }
+        }
 
         var showAll = (DynamicParameters as SlackPaginationParameters)?.All.IsPresent == true;
 
@@ -449,6 +452,8 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         {
             channels = EnsureChannelsLoaded();
         }
+
+        WarnIfChannelsCacheStale();
 
         var directory = EnsureDrivePrefix(path);
         foreach (var channel in channels.Values.OrderBy(c => c.Name))
@@ -940,9 +945,9 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         return result;
     }
 
-    #region Users Disk Cache
+    #region Disk Cache
 
-    private static readonly JsonSerializerOptions _usersCacheJsonOptions = new()
+    private static readonly JsonSerializerOptions _cacheJsonOptions = new()
     {
         WriteIndented = false,
         PropertyNameCaseInsensitive = true
@@ -967,7 +972,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
                 if (string.IsNullOrWhiteSpace(line)) continue;
                 try
                 {
-                    var user = JsonSerializer.Deserialize<SlackUser>(line, _usersCacheJsonOptions);
+                    var user = JsonSerializer.Deserialize<SlackUser>(line, _cacheJsonOptions);
                     if (user != null)
                         result[user.Name] = user;
                 }
@@ -988,7 +993,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
                 System.IO.Directory.CreateDirectory(folder);
             using var writer = new System.IO.StreamWriter(path, false, System.Text.Encoding.UTF8);
             foreach (var user in users.Values)
-                writer.WriteLine(JsonSerializer.Serialize(user, _usersCacheJsonOptions));
+                writer.WriteLine(JsonSerializer.Serialize(user, _cacheJsonOptions));
         }
         catch { /* best effort */ }
     }
@@ -1003,6 +1008,66 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         {
             var cachedDate = System.IO.File.GetLastWriteTimeUtc(path).ToLocalTime().ToString("yyyy-MM-dd");
             WriteWarning($"Users cache is {age.Days} days old ({cachedDate}). Run 'ls Slack:\\Users -Force' to refresh.");
+        }
+    }
+
+    // ── Channels Disk Cache ──
+
+    private string GetChannelsCacheFilePath()
+    {
+        var folder = SlackDriveConfigManager.GetConfigFolderPath();
+        return System.IO.Path.Combine(folder, $"channels-cache-{Drive.TeamId}.jsonl");
+    }
+
+    private Dictionary<string, SlackChannel>? LoadChannelsDiskCache()
+    {
+        var path = GetChannelsCacheFilePath();
+        if (!System.IO.File.Exists(path)) return null;
+
+        var result = new Dictionary<string, SlackChannel>();
+        try
+        {
+            foreach (var line in System.IO.File.ReadLines(path))
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                try
+                {
+                    var channel = JsonSerializer.Deserialize<SlackChannel>(line, _cacheJsonOptions);
+                    if (channel != null)
+                        result[channel.Name] = channel;
+                }
+                catch { /* skip malformed line */ }
+            }
+        }
+        catch { /* file read error */ }
+        return result.Count > 0 ? result : null;
+    }
+
+    private void SaveChannelsDiskCache(Dictionary<string, SlackChannel> channels)
+    {
+        try
+        {
+            var path = GetChannelsCacheFilePath();
+            var folder = System.IO.Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(folder) && !System.IO.Directory.Exists(folder))
+                System.IO.Directory.CreateDirectory(folder);
+            using var writer = new System.IO.StreamWriter(path, false, System.Text.Encoding.UTF8);
+            foreach (var channel in channels.Values)
+                writer.WriteLine(JsonSerializer.Serialize(channel, _cacheJsonOptions));
+        }
+        catch { /* best effort */ }
+    }
+
+    private void WarnIfChannelsCacheStale()
+    {
+        var path = GetChannelsCacheFilePath();
+        if (!System.IO.File.Exists(path)) return;
+
+        var age = DateTime.UtcNow - System.IO.File.GetLastWriteTimeUtc(path);
+        if (age > TimeSpan.FromDays(7))
+        {
+            var cachedDate = System.IO.File.GetLastWriteTimeUtc(path).ToLocalTime().ToString("yyyy-MM-dd");
+            WriteWarning($"Channels cache is {age.Days} days old ({cachedDate}). Run 'ls Slack:\\Channels -Force' to refresh.");
         }
     }
 
@@ -1058,6 +1123,14 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         var channels = Drive.Cache.Channels;
         if (channels != null) return channels;
 
+        // ディスクキャッシュから読み込み
+        channels = LoadChannelsDiskCache();
+        if (channels != null)
+        {
+            Drive.Cache.Channels = channels;
+            return channels;
+        }
+
         try
         {
             channels = Drive.IsUserToken ? FetchMyChannels() : FetchChannels();
@@ -1079,6 +1152,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         }
 
         Drive.Cache.Channels = channels;
+        SaveChannelsDiskCache(channels);
         return channels;
     }
 
