@@ -52,4 +52,4 @@ foreach ($stale in Get-ChildItem $deployPath -File | Where-Object { $_.Name -mat
 }
 
 Write-Host "`nDeployment completed." -ForegroundColor Green
-Write-Host "Restart PowerShell and run: Import-Module SlackDrive" -ForegroundColor Yellow
+Write-Host "Restart PowerShell and run: Import-SlackConfig" -ForegroundColor Yellow
