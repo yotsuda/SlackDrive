@@ -91,7 +91,7 @@ public class ImportSlackConfigCommand : PSCmdlet
                 }
 
                 SessionState.Drive.New(slackDrive, "global");
-                WriteObject($"Mounted {driveSettings.Name}:");
+                WriteVerbose($"Mounted {driveSettings.Name}:");
             }
             catch (Exception ex)
             {
