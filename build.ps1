@@ -31,7 +31,7 @@ if (-not (Test-Path $deployPath)) {
 }
 
 $exclude = @('*.dev.psd1', '*.pdb')
-foreach ($file in Get-ChildItem $modulePath -File -Exclude $exclude) {
+foreach ($file in Get-ChildItem "$modulePath\*" -File -Exclude $exclude) {
     try {
         Copy-Item $file.FullName $deployPath -Force
         Write-Host "  Deployed $($file.Name)" -ForegroundColor Green
