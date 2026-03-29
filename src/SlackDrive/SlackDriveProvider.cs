@@ -607,10 +607,10 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         int limit = parameters?.First ?? 20;
         int skip = parameters?.Skip ?? 0;
 
-        // -Filter: search.messages API で検索
-        if (!string.IsNullOrEmpty(parameters?.Filter))
+        // -Search: search.messages API で検索
+        if (!string.IsNullOrEmpty(parameters?.Search))
         {
-            WriteFilteredMessages(channel, path, parameters.Filter, limit);
+            WriteFilteredMessages(channel, path, parameters.Search, limit);
             return;
         }
 
@@ -1584,7 +1584,7 @@ public class SlackPaginationParameters
     public DateTime? Before { get; set; }
 
     [Parameter]
-    public string? Filter { get; set; }
+    public string? Search { get; set; }
 
     [Parameter]
     public SwitchParameter All { get; set; }
