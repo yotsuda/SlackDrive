@@ -344,40 +344,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         return new SlackPaginationParameters();
     }
 
-    protected override void GetChildNames(string path, ReturnContainers returnContainers)
-    {
-        var normalized = NormalizePath(path);
-
-        if (string.IsNullOrEmpty(normalized))
-        {
-            WriteItemObject("Channels", MakePath(path, "Channels"), true);
-            WriteItemObject("DirectMessages", MakePath(path, "DirectMessages"), true);
-            WriteItemObject("Users", MakePath(path, "Users"), true);
-            WriteItemObject("Files", MakePath(path, "Files"), true);
-            return;
-        }
-
-        var parts = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
-
-        var cat = parts[0].ToLower();
-
-        switch (cat)
-        {
-            case "channels" when parts.Length == 1:
-                foreach (var ch in EnsureChannelsLoaded().Values.OrderBy(c => c.Name))
-                    WriteItemObject(ch.Name, MakePath(path, ch.Name), true);
-                break;
-            case "channels" when parts.Length >= 2:
-            case "directmessages" when parts.Length >= 2:
-                // メッセージ一覧・スレッド返信は GetChildItems にフォールバック
-                GetChildItems(path, false);
-                break;
-            case "users" when parts.Length == 1:
-                foreach (var u in EnsureUsersLoadedSync().Values.Where(u => !u.IsDeleted).OrderBy(u => u.Name))
-                    WriteItemObject(u.Name, MakePath(path, u.Name), false);
-                break;
-        }
-    }
+    // GetChildNames は未オーバーライド — PowerShell が GetChildItems から名前を自動抽出する
 
     protected override void InvokeDefaultAction(string path)
     {
