@@ -181,12 +181,6 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         var parameters = DynamicParameters as SlackPaginationParameters;
         int first = parameters?.First ?? 20;
 
-        // -Reload: キャッシュをクリアして API から再取得
-        if (parameters?.Reload.IsPresent == true)
-        {
-            Drive.Cache.Clear();
-        }
-
         try
         {
             switch (parts[0].ToLower())
@@ -1345,9 +1339,6 @@ public class SlackPaginationParameters
 {
     [Parameter]
     public int? First { get; set; }
-
-    [Parameter]
-    public SwitchParameter Reload { get; set; }
 
     [Parameter]
     public SwitchParameter All { get; set; }
