@@ -51,11 +51,11 @@ public class SlackDriveInfo : PSDriveInfo, IDisposable
         }
     }
 
-    public string TeamId => EnsureAuthInfo().TeamId;
-    public string TeamName => EnsureAuthInfo().Team;
-    public string WorkspaceUrl => EnsureAuthInfo().Url;
-    public string BotUser => EnsureAuthInfo().User;
-    public string BotUserId => EnsureAuthInfo().UserId;
+    public string TeamId => IsConnected ? EnsureAuthInfo().TeamId : "";
+    public string TeamName => IsConnected ? EnsureAuthInfo().Team : "(not connected)";
+    public string WorkspaceUrl => IsConnected ? EnsureAuthInfo().Url : "";
+    public string BotUser => IsConnected ? EnsureAuthInfo().User : "";
+    public string BotUserId => IsConnected ? EnsureAuthInfo().UserId : "";
 
     /// <summary>
     /// ユーザートークン (xoxp- / xoxc-) の場合 true。
