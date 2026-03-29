@@ -673,11 +673,11 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
             });
         }
 
-        // -Skip: 先頭をスキップ
+        // -Skip: 最新 N 件をスキップ（API は最新順で返す）
         if (skip > 0 && messages.Count > skip)
-            messages = messages.GetRange(0, messages.Count - skip);
+            messages = messages.GetRange(skip, messages.Count - skip);
         if (messages.Count > limit)
-            messages = messages.GetRange(messages.Count - limit, limit);
+            messages = messages.GetRange(0, limit);
 
         // 短縮 ts + 著者 + 冒頭テキストで表示名を生成
         var tsValues = messages.Select(m => m.Ts).ToList();
