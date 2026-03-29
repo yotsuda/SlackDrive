@@ -11,35 +11,7 @@ namespace SlackDrive;
 /// </summary>
 public class SlackModuleInitializer : IModuleAssemblyInitializer, IModuleAssemblyCleanup
 {
-    private static readonly string[] _pathCmdlets =
-    [
-        "Get-ChildItem", "Set-Location", "Get-Item", "Get-Content",
-        "New-Item", "Invoke-Item", "Test-Path", "Resolve-Path"
-    ];
-
-    public void OnImport()
-    {
-        var completer = new SlackPathCompleter();
-        using var ps = PowerShell.Create(RunspaceMode.CurrentRunspace);
-        foreach (var cmdlet in _pathCmdlets)
-        {
-            ps.Commands.Clear();
-            ps.AddCommand("Register-ArgumentCompleter")
-                .AddParameter("CommandName", cmdlet)
-                .AddParameter("ParameterName", "Path")
-                .AddParameter("ScriptBlock",
-                    ScriptBlock.Create($"param($commandName,$parameterName,$wordToComplete,$commandAst,$fakeBoundParameters) [SlackDrive.SlackPathCompleter]::new().CompleteArgument($commandName,$parameterName,$wordToComplete,$commandAst,$fakeBoundParameters)"));
-            ps.Invoke();
-            ps.Commands.Clear();
-            ps.AddCommand("Register-ArgumentCompleter")
-                .AddParameter("CommandName", cmdlet)
-                .AddParameter("ParameterName", "LiteralPath")
-                .AddParameter("ScriptBlock",
-                    ScriptBlock.Create($"param($commandName,$parameterName,$wordToComplete,$commandAst,$fakeBoundParameters) [SlackDrive.SlackPathCompleter]::new().CompleteArgument($commandName,$parameterName,$wordToComplete,$commandAst,$fakeBoundParameters)"));
-            ps.Invoke();
-        }
-    }
-
+    public void OnImport() { }
     public void OnRemove(PSModuleInfo psModuleInfo) { }
 }
 
