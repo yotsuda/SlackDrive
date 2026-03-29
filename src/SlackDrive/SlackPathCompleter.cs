@@ -11,7 +11,35 @@ namespace SlackDrive;
 /// </summary>
 public class SlackModuleInitializer : IModuleAssemblyInitializer, IModuleAssemblyCleanup
 {
-    public void OnImport() { }
+    private static readonly string[] _pathCmdlets =
+    [
+        "Get-ChildItem", "Set-Location", "Get-Item", "Get-Content",
+        "New-Item", "Invoke-Item", "Test-Path", "Resolve-Path"
+    ];
+
+    public void OnImport()
+    {
+        var completer = new SlackPathCompleter();
+        using var ps = PowerShell.Create(RunspaceMode.CurrentRunspace);
+        foreach (var cmdlet in _pathCmdlets)
+        {
+            ps.Commands.Clear();
+            ps.AddCommand("Register-ArgumentCompleter")
+                .AddParameter("CommandName", cmdlet)
+                .AddParameter("ParameterName", "Path")
+                .AddParameter("ScriptBlock",
+                    ScriptBlock.Create($"param($commandName,$parameterName,$wordToComplete,$commandAst,$fakeBoundParameters) [SlackDrive.SlackPathCompleter]::new().CompleteArgument($commandName,$parameterName,$wordToComplete,$commandAst,$fakeBoundParameters)"));
+            ps.Invoke();
+            ps.Commands.Clear();
+            ps.AddCommand("Register-ArgumentCompleter")
+                .AddParameter("CommandName", cmdlet)
+                .AddParameter("ParameterName", "LiteralPath")
+                .AddParameter("ScriptBlock",
+                    ScriptBlock.Create($"param($commandName,$parameterName,$wordToComplete,$commandAst,$fakeBoundParameters) [SlackDrive.SlackPathCompleter]::new().CompleteArgument($commandName,$parameterName,$wordToComplete,$commandAst,$fakeBoundParameters)"));
+            ps.Invoke();
+        }
+    }
+
     public void OnRemove(PSModuleInfo psModuleInfo) { }
 }
 
@@ -110,7 +138,7 @@ public class SlackPathCompleter : IArgumentCompleter
             foreach (var name in new[] { "Channels", "DirectMessages", "Users", "Files" })
             {
                 if (pattern.IsMatch(name))
-                    results.Add(MakeResult(inputPrefix + name, name, CompletionResultType.ProviderItem));
+                    results.Add(MakeResult(inputPrefix + name, name, CompletionResultType.ProviderItem, $"{driveName}:\\{name}"));
             }
             return results;
         }
@@ -131,7 +159,7 @@ public class SlackPathCompleter : IArgumentCompleter
             foreach (var ch in channels.Values.OrderBy(c => c.Name))
             {
                 if (pattern.IsMatch(ch.Name))
-                    results.Add(MakeResult(inputPrefix + ch.Name, ch.Name, CompletionResultType.ProviderItem));
+                    results.Add(MakeResult(inputPrefix + ch.Name, ch.Name, CompletionResultType.ProviderItem, $"{driveName}:\\Channels\\{ch.Name}"));
             }
         }
         // ── Channels/<channel>/messages (メッセージ) ──
@@ -182,7 +210,7 @@ public class SlackPathCompleter : IArgumentCompleter
             foreach (var u in users.Values.Where(u => !u.IsDeleted).OrderBy(u => u.Name))
             {
                 if (pattern.IsMatch(u.Name))
-                    results.Add(MakeResult(inputPrefix + u.Name, u.Name, CompletionResultType.ProviderItem));
+                    results.Add(MakeResult(inputPrefix + u.Name, u.Name, CompletionResultType.ProviderItem, $"{driveName}:\\Users\\{u.Name}"));
             }
         }
 
@@ -207,9 +235,9 @@ public class SlackPathCompleter : IArgumentCompleter
         return text;
     }
 
-    private static CompletionResult MakeResult(string completionText, string listItemText, CompletionResultType type)
+    private static CompletionResult MakeResult(string completionText, string listItemText, CompletionResultType type, string? tooltip = null)
     {
-        return new CompletionResult(QuoteIfNeeded(completionText), listItemText, type, listItemText);
+        return new CompletionResult(QuoteIfNeeded(completionText), listItemText, type, tooltip ?? listItemText);
     }
 
     private static string ResolveUserName(Dictionary<string, SlackUser>? users, string userId)
