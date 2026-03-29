@@ -273,7 +273,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
             UserId = userId,
             UserName = userName,
             Text = users != null ? ResolveSlackMentions(rawText, users) : rawText,
-            Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)double.Parse(ts.Split('.')[0])).DateTime,
+            Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)double.Parse(ts.Split('.')[0])).LocalDateTime,
             ReplyCount = 0
         };
         WriteItemObject(message, ts, false);
@@ -553,7 +553,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
                     IsPrivate = true,
                     IsMember = true,
                     Created = ch.TryGetProperty("created", out var cr)
-                        ? DateTimeOffset.FromUnixTimeSeconds(cr.GetInt64()).DateTime
+                        ? DateTimeOffset.FromUnixTimeSeconds(cr.GetInt64()).LocalDateTime
                         : DateTime.MinValue
                 });
             }
@@ -675,7 +675,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
                 UserId = userId,
                 UserName = userName,
                 Text = users != null ? ResolveSlackMentions(rawText, users) : rawText,
-                Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)double.Parse(ts.Split('.')[0])).DateTime,
+                Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)double.Parse(ts.Split('.')[0])).LocalDateTime,
                 ThreadTs = m.TryGetProperty("thread_ts", out var tts) ? tts.GetString() : null,
                 ReplyCount = m.TryGetProperty("reply_count", out var rc) ? rc.GetInt32() : 0,
                 Directory = directory
@@ -764,7 +764,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
                 Size = f.TryGetProperty("size", out var s) ? s.GetInt64() : 0,
                 UrlPrivate = f.TryGetProperty("url_private", out var u) ? u.GetString() : null,
                 Created = f.TryGetProperty("created", out var cr)
-                    ? DateTimeOffset.FromUnixTimeSeconds(cr.GetInt64()).DateTime
+                    ? DateTimeOffset.FromUnixTimeSeconds(cr.GetInt64()).LocalDateTime
                     : DateTime.MinValue,
                 UserId = f.TryGetProperty("user", out var uid) ? uid.GetString() ?? "" : ""
             };

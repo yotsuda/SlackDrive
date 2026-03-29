@@ -275,7 +275,7 @@ public class SlackPathCompleter : IArgumentCompleter
                     UserId = userId,
                     Text = m.GetProperty("text").GetString() ?? "",
                     Timestamp = DateTimeOffset.FromUnixTimeSeconds(
-                        (long)double.Parse(ts.Split('.')[0])).DateTime,
+                        (long)double.Parse(ts.Split('.')[0])).LocalDateTime,
                     ReplyCount = m.TryGetProperty("reply_count", out var rc) ? rc.GetInt32() : 0
                 });
             }
