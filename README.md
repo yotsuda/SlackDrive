@@ -71,13 +71,13 @@ Edit-SlackConfig
 
 ```json
 {
-  "psDrives": [
+  "PsDrives": [
     {
-      "name": "Slack",
-      "description": "My workspace",
-      "clientId": "YOUR_CLIENT_ID",
-      "clientSecret": "YOUR_CLIENT_SECRET",
-      "enabled": true
+      "Name": "Slack",
+      "Description": "My workspace",
+      "ClientId": "YOUR_CLIENT_ID",
+      "ClientSecret": "YOUR_CLIENT_SECRET",
+      "Enabled": true
     }
   ]
 }
@@ -128,11 +128,11 @@ Or add to the config file:
 
 ```json
 {
-  "psDrives": [
+  "PsDrives": [
     {
-      "name": "Slack",
-      "token": "xoxp-...",
-      "enabled": true
+      "Name": "Slack",
+      "Token": "xoxp-...",
+      "Enabled": true
     }
   ]
 }
@@ -232,9 +232,9 @@ Find-SlackUser john
 
 ```json
 {
-  "psDrives": [
-    { "name": "Work", "clientId": "...", "clientSecret": "...", "enabled": true },
-    { "name": "Personal", "token": "xoxp-...", "enabled": true }
+  "PsDrives": [
+    { "Name": "Work", "ClientId": "...", "ClientSecret": "...", "Enabled": true },
+    { "Name": "Personal", "Token": "xoxp-...", "Enabled": true }
   ]
 }
 ```
