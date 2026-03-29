@@ -56,6 +56,7 @@ public class SlackDriveInfo : PSDriveInfo, IDisposable
     public string WorkspaceUrl => IsConnected ? EnsureAuthInfo().Url : "";
     public string BotUser => IsConnected ? EnsureAuthInfo().User : "";
     public string BotUserId => IsConnected ? EnsureAuthInfo().UserId : "";
+    public new string DisplayRoot => WorkspaceUrl;
 
     /// <summary>
     /// ユーザートークン (xoxp- / xoxc-) の場合 true。
