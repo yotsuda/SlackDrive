@@ -263,8 +263,8 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         var msg = root.GetProperty("message");
         var ts = msg.GetProperty("ts").GetString() ?? "";
         var userId = msg.TryGetProperty("user", out var u) ? u.GetString() ?? "" : "";
-        var users = Drive.Cache.Users;
-        var userName = users?.Values.FirstOrDefault(x => x.Id == userId)?.Name ?? userId;
+        var users = Drive.Cache.Users ?? EnsureUsersLoadedSync();
+        var userName = users.Values.FirstOrDefault(x => x.Id == userId)?.Name ?? userId;
         var rawText = msg.GetProperty("text").GetString() ?? "";
 
         var message = new SlackMessage
@@ -272,9 +272,10 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
             Ts = ts,
             UserId = userId,
             UserName = userName,
-            Text = users != null ? ResolveSlackMentions(rawText, users) : rawText,
+            Text = ResolveSlackMentions(rawText, users),
             Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)double.Parse(ts.Split('.')[0])).LocalDateTime,
-            ReplyCount = 0
+            ReplyCount = 0,
+            Directory = $"{PSDriveInfo.Name}:\\Channels"
         };
         WriteItemObject(message, ts, false);
     }
