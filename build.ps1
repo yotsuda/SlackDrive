@@ -1,8 +1,4 @@
 # Build and deploy script for SlackDrive
-param(
-    [switch]$Deploy
-)
-
 $ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
 $srcPath = Join-Path $projectRoot 'src\SlackDrive'
@@ -27,28 +23,23 @@ foreach ($file in @('SlackDrive.dll', 'SlackDrive.pdb')) {
 Write-Host "`nBuild completed. Module is ready at: $modulePath" -ForegroundColor Green
 
 # Deploy
-if ($Deploy) {
-    Write-Host "`nDeploying to $deployPath..." -ForegroundColor Cyan
+Write-Host "`nDeploying to $deployPath..." -ForegroundColor Cyan
 
-    if (-not (Test-Path $deployPath)) {
-        New-Item -Path $deployPath -ItemType Directory -Force | Out-Null
-        Write-Host "  Created $deployPath" -ForegroundColor Yellow
-    }
-
-    foreach ($file in Get-ChildItem $modulePath -File) {
-        try {
-            Copy-Item $file.FullName $deployPath -Force
-            Write-Host "  Deployed $($file.Name)" -ForegroundColor Green
-        }
-        catch {
-            Write-Host "  Failed to copy $($file.Name): $($_.Exception.Message)" -ForegroundColor Red
-            Write-Host "  (File may be locked by another PowerShell session)" -ForegroundColor Yellow
-        }
-    }
-
-    Write-Host "`nDeployment completed." -ForegroundColor Green
-    Write-Host "Restart PowerShell and run: Import-Module SlackDrive" -ForegroundColor Yellow
+if (-not (Test-Path $deployPath)) {
+    New-Item -Path $deployPath -ItemType Directory -Force | Out-Null
+    Write-Host "  Created $deployPath" -ForegroundColor Yellow
 }
-else {
-    Write-Host "`nTo deploy, run: .\build.ps1 -Deploy" -ForegroundColor Yellow
+
+foreach ($file in Get-ChildItem $modulePath -File) {
+    try {
+        Copy-Item $file.FullName $deployPath -Force
+        Write-Host "  Deployed $($file.Name)" -ForegroundColor Green
+    }
+    catch {
+        Write-Host "  Failed to copy $($file.Name): $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "  (File may be locked by another PowerShell session)" -ForegroundColor Yellow
+    }
 }
+
+Write-Host "`nDeployment completed." -ForegroundColor Green
+Write-Host "Restart PowerShell and run: Import-Module SlackDrive" -ForegroundColor Yellow
