@@ -1486,6 +1486,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
             {
                 var reply = messages[i];
                 sb.AppendLine();
+                sb.AppendLine();
                 sb.AppendLine($"**{reply.UserName}** ({reply.Timestamp:yyyy-MM-dd HH:mm}):");
                 sb.Append(reply.Text);
             }
