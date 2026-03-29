@@ -1,35 +1,22 @@
 # Build and deploy script for SlackDrive
 param(
-    [ValidateSet('Debug', 'Release')]
-    [string]$Configuration = 'Debug',
-    
-    [switch]$Deploy,
-    
-    [string]$DeployPath = "C:\Program Files\PowerShell\7\Modules\SlackDrive"
+    [switch]$Deploy
 )
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
 $srcPath = Join-Path $projectRoot 'src\SlackDrive'
 $modulePath = Join-Path $projectRoot 'module'
+$deployPath = 'C:\Program Files\PowerShell\7\Modules\SlackDrive'
 
-Write-Host "Building SlackDrive ($Configuration)..." -ForegroundColor Cyan
+Write-Host 'Building SlackDrive (Release)...' -ForegroundColor Cyan
 
-# Build the project
-dotnet build $srcPath -c $Configuration
-
-if ($LASTEXITCODE -ne 0) {
-    throw "Build failed"
-}
+dotnet build $srcPath -c Release
+if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
 
 # Copy DLL to module folder
-$outputPath = Join-Path $srcPath "bin\$Configuration\net9.0"
-$dllFiles = @(
-    'SlackDrive.dll',
-    'SlackDrive.pdb'
-)
-
-foreach ($file in $dllFiles) {
+$outputPath = Join-Path $srcPath 'bin\Release\net9.0'
+foreach ($file in @('SlackDrive.dll', 'SlackDrive.pdb')) {
     $source = Join-Path $outputPath $file
     if (Test-Path $source) {
         Copy-Item $source $modulePath -Force
@@ -39,21 +26,18 @@ foreach ($file in $dllFiles) {
 
 Write-Host "`nBuild completed. Module is ready at: $modulePath" -ForegroundColor Green
 
-# Deploy to PowerShell modules folder
+# Deploy
 if ($Deploy) {
-    Write-Host "`nDeploying to $DeployPath..." -ForegroundColor Cyan
-    
-    # Create directory if not exists
-    if (-not (Test-Path $DeployPath)) {
-        New-Item -Path $DeployPath -ItemType Directory -Force | Out-Null
-        Write-Host "  Created $DeployPath" -ForegroundColor Yellow
+    Write-Host "`nDeploying to $deployPath..." -ForegroundColor Cyan
+
+    if (-not (Test-Path $deployPath)) {
+        New-Item -Path $deployPath -ItemType Directory -Force | Out-Null
+        Write-Host "  Created $deployPath" -ForegroundColor Yellow
     }
-    
-    # Copy all module files
-    $moduleFiles = Get-ChildItem $modulePath -File
-    foreach ($file in $moduleFiles) {
+
+    foreach ($file in Get-ChildItem $modulePath -File) {
         try {
-            Copy-Item $file.FullName $DeployPath -Force
+            Copy-Item $file.FullName $deployPath -Force
             Write-Host "  Deployed $($file.Name)" -ForegroundColor Green
         }
         catch {
@@ -61,7 +45,7 @@ if ($Deploy) {
             Write-Host "  (File may be locked by another PowerShell session)" -ForegroundColor Yellow
         }
     }
-    
+
     Write-Host "`nDeployment completed." -ForegroundColor Green
     Write-Host "Restart PowerShell and run: Import-Module SlackDrive" -ForegroundColor Yellow
 }
