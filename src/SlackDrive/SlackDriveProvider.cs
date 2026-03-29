@@ -119,7 +119,8 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         }
 
         // Channels/<channel>/<ts> or DirectMessages/<dm>/<ts> — message item
-        if (parts.Length == 3 && firstPart is "channels" or "directmessages")
+        // Channels/<channel>/<ts>/<replyTs> — thread reply item
+        if ((parts.Length == 3 || parts.Length == 4) && firstPart is "channels" or "directmessages")
             return GetChannelByName(parts[1]) != null;
 
         return false;
@@ -1349,8 +1350,9 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
     {
         var normalized = NormalizePath(path);
         var parts = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var cat = parts.Length > 0 ? parts[0].ToLower() : "";
 
-        if (parts.Length != 3 || parts[0].ToLower() != "channels")
+        if ((parts.Length != 3 && parts.Length != 4) || cat is not "channels" and not "directmessages")
             throw new InvalidOperationException($"Cannot read content from path: {path}");
 
         var channelName = parts[1];
@@ -1362,9 +1364,37 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         if (ts == null)
             throw new ItemNotFoundException($"Message not found: {parts[2]}");
 
-        var messages = FetchThread(channel.Id, ts);
-        var markdown = BuildMarkdown(channelName, channel.Id, messages);
+        if (parts.Length == 4)
+        {
+            // スレッド返信の本文を返す
+            var messages = FetchThread(channel.Id, ts);
+            var replyTs = ResolveThreadReplyIdentifier(messages, parts[3]);
+            var reply = messages.FirstOrDefault(m => m.Ts == replyTs);
+            if (reply == null)
+                throw new ItemNotFoundException($"Reply not found: {parts[3]}");
+            return new SlackContentReader(reply.Text);
+        }
+
+        var thread = FetchThread(channel.Id, ts);
+        var markdown = BuildMarkdown(channelName, channel.Id, thread);
         return new SlackContentReader(markdown);
+    }
+
+    /// <summary>スレッド返信の表示名から ts を逆引きする。</summary>
+    private string? ResolveThreadReplyIdentifier(List<SlackMessage> messages, string identifier)
+    {
+        if (Regex.IsMatch(identifier, @"^\d+\.\d+$"))
+            return identifier;
+
+        var segments = identifier.Split('_');
+        var shortTs = segments.Length >= 3 ? segments[2] : segments[0];
+
+        foreach (var m in messages)
+        {
+            if (m.Ts.Replace(".", "").EndsWith(shortTs))
+                return m.Ts;
+        }
+        return null;
     }
 
     public IContentWriter GetContentWriter(string path)
