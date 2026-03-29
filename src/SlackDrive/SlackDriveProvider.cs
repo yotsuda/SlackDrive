@@ -293,7 +293,6 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
 
         var parts = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
         var parameters = DynamicParameters as SlackPaginationParameters;
-        int first = parameters?.First ?? 20;
 
         try
         {
@@ -303,7 +302,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
                     if (parts.Length == 1)
                         WriteChannels(path);
                     else if (parts.Length == 2)
-                        WriteChannelMessages(parts[1], path, first);
+                        WriteChannelMessages(parts[1], path, parameters);
                     else if (parts.Length == 3)
                         WriteThreadMessages(parts[1], parts[2], path);
                     break;
@@ -311,7 +310,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
                     if (parts.Length == 1)
                         WriteDirectMessages(path);
                     else if (parts.Length == 2)
-                        WriteChannelMessages(parts[1], path, first);
+                        WriteChannelMessages(parts[1], path, parameters);
                     else if (parts.Length == 3)
                         WriteThreadMessages(parts[1], parts[2], path);
                     break;
@@ -321,7 +320,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
                     break;
                 case "files":
                     if (parts.Length == 1)
-                        WriteFiles(path, first);
+                        WriteFiles(path, parameters?.First ?? 100);
                     break;
             }
         }
@@ -334,7 +333,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         // -ExportCsv: 結果を CSV に出力
         if (!string.IsNullOrEmpty(parameters?.ExportCsv))
         {
-            var csvPath = ExportChildItemsCsv(normalized, parameters.ExportCsv, parameters.CsvEncoding, first);
+            var csvPath = ExportChildItemsCsv(normalized, parameters.ExportCsv, parameters.CsvEncoding, parameters?.First ?? 20);
             if (csvPath != null)
                 WriteWarning($"CSV exported: {csvPath}");
         }
@@ -592,7 +591,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         }
     }
 
-    private void WriteChannelMessages(string channelName, string path, int limit = 20)
+    private void WriteChannelMessages(string channelName, string path, SlackPaginationParameters? parameters)
     {
         var channel = GetChannelByName(channelName);
         if (channel == null)
@@ -605,11 +604,27 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
             return;
         }
 
+        int limit = parameters?.First ?? 20;
+        int skip = parameters?.Skip ?? 0;
+
+        // -Filter: search.messages API で検索
+        if (!string.IsNullOrEmpty(parameters?.Filter))
+        {
+            WriteFilteredMessages(channel, path, parameters.Filter, limit);
+            return;
+        }
+
         var queryParams = new Dictionary<string, string>
         {
             ["channel"] = channel.Id,
-            ["limit"] = limit.ToString()
+            ["limit"] = (limit + skip).ToString()
         };
+
+        // -After / -Before: oldest / latest API パラメータ
+        if (parameters?.After != null)
+            queryParams["oldest"] = new DateTimeOffset(parameters.After.Value).ToUnixTimeSeconds().ToString();
+        if (parameters?.Before != null)
+            queryParams["latest"] = new DateTimeOffset(parameters.Before.Value).ToUnixTimeSeconds().ToString();
 
         var doc = Drive.Client.GetAsync("conversations.history", queryParams).GetAwaiter().GetResult();
         var root = doc.RootElement;
@@ -658,7 +673,68 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
             });
         }
 
+        // -Skip: 先頭をスキップ
+        if (skip > 0 && messages.Count > skip)
+            messages = messages.GetRange(0, messages.Count - skip);
+        if (messages.Count > limit)
+            messages = messages.GetRange(messages.Count - limit, limit);
+
         // 短縮 ts + 著者 + 冒頭テキストで表示名を生成
+        var tsValues = messages.Select(m => m.Ts).ToList();
+        foreach (var message in messages)
+        {
+            var displayName = BuildMessageDisplayName(message, tsValues);
+            message.Path = EnsureDrivePrefix(MakePath(path, displayName));
+            WriteItemObject(message, MakePath(path, displayName), isContainer: true);
+        }
+    }
+
+    private void WriteFilteredMessages(SlackChannel channel, string path, string query, int limit)
+    {
+        var searchQuery = $"in:#{channel.Name} {query}";
+        var queryParams = new Dictionary<string, string>
+        {
+            ["query"] = searchQuery,
+            ["count"] = limit.ToString(),
+            ["sort"] = "timestamp",
+            ["sort_dir"] = "desc"
+        };
+
+        var doc = Drive.Client.GetAsync("search.messages", queryParams).GetAwaiter().GetResult();
+        var root = doc.RootElement;
+
+        if (!root.GetProperty("ok").GetBoolean())
+        {
+            var error = root.TryGetProperty("error", out var e) ? e.GetString() : "Unknown error";
+            throw new InvalidOperationException($"Search failed: {error}");
+        }
+
+        var users = Drive.Cache.Users ?? EnsureUsersLoadedSync();
+        var directory = EnsureDrivePrefix(path);
+        var messages = new List<SlackMessage>();
+
+        var matches = root.GetProperty("messages").GetProperty("matches");
+        foreach (var m in matches.EnumerateArray())
+        {
+            var userId = m.TryGetProperty("user", out var u) ? u.GetString() ?? "" : "";
+            var ts = m.GetProperty("ts").GetString() ?? "";
+            var userName = m.TryGetProperty("username", out var un) ? un.GetString() : null;
+            userName ??= users.Values.FirstOrDefault(x => x.Id == userId)?.Name ?? userId;
+
+            var rawText = m.GetProperty("text").GetString() ?? "";
+            messages.Add(new SlackMessage
+            {
+                Ts = ts,
+                UserId = userId,
+                UserName = userName,
+                Text = ResolveSlackMentions(rawText, users),
+                Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)double.Parse(ts.Split('.')[0])).LocalDateTime,
+                ThreadTs = m.TryGetProperty("thread_ts", out var tts) ? tts.GetString() : null,
+                ReplyCount = m.TryGetProperty("reply_count", out var rc) ? rc.GetInt32() : 0,
+                Directory = directory
+            });
+        }
+
         var tsValues = messages.Select(m => m.Ts).ToList();
         foreach (var message in messages)
         {
@@ -1497,6 +1573,18 @@ public class SlackPaginationParameters
 {
     [Parameter]
     public int? First { get; set; }
+
+    [Parameter]
+    public int? Skip { get; set; }
+
+    [Parameter]
+    public DateTime? After { get; set; }
+
+    [Parameter]
+    public DateTime? Before { get; set; }
+
+    [Parameter]
+    public string? Filter { get; set; }
 
     [Parameter]
     public SwitchParameter All { get; set; }
