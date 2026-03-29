@@ -259,9 +259,24 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
             return;
         }
 
-        // 投稿されたメッセージの ts を返す
-        var ts = root.GetProperty("ts").GetString() ?? "";
-        WriteItemObject(ts, ts, false);
+        // 投稿されたメッセージを SlackMessage として返す
+        var msg = root.GetProperty("message");
+        var ts = msg.GetProperty("ts").GetString() ?? "";
+        var userId = msg.TryGetProperty("user", out var u) ? u.GetString() ?? "" : "";
+        var users = Drive.Cache.Users;
+        var userName = users?.Values.FirstOrDefault(x => x.Id == userId)?.Name ?? userId;
+        var rawText = msg.GetProperty("text").GetString() ?? "";
+
+        var message = new SlackMessage
+        {
+            Ts = ts,
+            UserId = userId,
+            UserName = userName,
+            Text = users != null ? ResolveSlackMentions(rawText, users) : rawText,
+            Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)double.Parse(ts.Split('.')[0])).DateTime,
+            ReplyCount = 0
+        };
+        WriteItemObject(message, ts, false);
     }
 
     protected override void GetChildItems(string path, bool recurse)
