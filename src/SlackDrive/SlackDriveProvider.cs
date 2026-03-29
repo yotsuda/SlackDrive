@@ -1467,7 +1467,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         // メタデータヘッダー
         sb.AppendLine($"# #{channelName}");
         sb.AppendLine();
-        sb.AppendLine($"> {parent.Timestamp:yyyy-MM-dd HH:mm} | @{parent.UserName}{replyInfo} | {permalink}");
+        sb.AppendLine($"{parent.Timestamp:yyyy-MM-dd HH:mm} | @{parent.UserName}{replyInfo} | {permalink}");
         sb.AppendLine();
         sb.AppendLine("---");
         sb.AppendLine();
@@ -1486,11 +1486,8 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
             {
                 var reply = messages[i];
                 sb.AppendLine();
-                sb.AppendLine($"> **{reply.UserName}** ({reply.Timestamp:yyyy-MM-dd HH:mm}):");
-                foreach (var line in reply.Text.Split('\n'))
-                {
-                    sb.AppendLine($"> {line}");
-                }
+                sb.AppendLine($"**{reply.UserName}** ({reply.Timestamp:yyyy-MM-dd HH:mm}):");
+                sb.Append(reply.Text);
             }
         }
 
