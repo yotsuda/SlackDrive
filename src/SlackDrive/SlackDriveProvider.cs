@@ -1474,10 +1474,9 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         {
             var msg = messages[i];
             sb.AppendLine($"{msg.UserName} ({msg.Timestamp:yyyy-MM-dd HH:mm}):");
-            sb.Append(msg.Text);
+            sb.AppendLine(msg.Text);
             if (i < messages.Count - 1)
             {
-                sb.AppendLine();
                 sb.AppendLine();
                 sb.AppendLine(Separator);
                 sb.AppendLine();
