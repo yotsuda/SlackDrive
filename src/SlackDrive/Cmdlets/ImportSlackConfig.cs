@@ -91,7 +91,6 @@ public class ImportSlackConfigCommand : PSCmdlet
                 }
 
                 SessionState.Drive.New(slackDrive, "global");
-                WriteObject(slackDrive);
             }
             catch (Exception ex)
             {
