@@ -780,7 +780,8 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         var age = DateTime.UtcNow - System.IO.File.GetLastWriteTimeUtc(path);
         if (age > TimeSpan.FromDays(7))
         {
-            WriteWarning($"Users cache is {age.Days} days old. Run 'ls Slack:\\Users -Force' to refresh.");
+            var cachedDate = System.IO.File.GetLastWriteTimeUtc(path).ToLocalTime().ToString("yyyy-MM-dd");
+            WriteWarning($"Users cache is {age.Days} days old ({cachedDate}). Run 'ls Slack:\\Users -Force' to refresh.");
         }
     }
 
