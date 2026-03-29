@@ -533,7 +533,7 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
             throw new InvalidOperationException($"Failed to get messages: {error}");
         }
 
-        var users = Drive.Cache.Users;
+        var users = Drive.Cache.Users ?? EnsureUsersLoadedSync();
 
         var directory = EnsureDrivePrefix(path);
         var messages = new List<SlackMessage>();
@@ -1034,8 +1034,8 @@ public class SlackDriveProvider : NavigationCmdletProvider, IContentCmdletProvid
         {
             var id = m.Groups[1].Value;
             var fallback = m.Groups[2].Success ? m.Groups[2].Value : null;
-            var name = users.Values.FirstOrDefault(x => x.Id == id)?.DisplayName
-                    ?? users.Values.FirstOrDefault(x => x.Id == id)?.Name
+            var user = users.Values.FirstOrDefault(x => x.Id == id);
+            var name = (!string.IsNullOrEmpty(user?.DisplayName) ? user.DisplayName : user?.Name)
                     ?? fallback ?? id;
             return $"@{name}";
         });
