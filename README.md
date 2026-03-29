@@ -8,11 +8,15 @@ The most popular Slack module for PowerShell, [PSSlack](https://www.powershellga
 
 ## Features
 
-- Navigate Slack workspaces as PowerShell drives (`ls`, `cd`, `Get-Content`)
-- Multiple workspace support (one drive per workspace)
-- Tab completion for channel and user names
+- Navigate Slack workspaces as PowerShell drives (`ls`, `cd`, `Get-Content`, `New-Item`)
+- Browse channels, private channels, DMs, users, and files
+- Read message threads by navigating into messages
+- Post messages and thread replies with `New-Item`
+- Search users with `Find-SlackUser`
+- Tab completion for channel names, user names, and messages
 - Automatic two-tier caching (memory + disk) for performance
-- OAuth 2.0 with PKCE support
+- OAuth 2.0 with PKCE support (via GitHub Pages relay)
+- Multiple workspace support (one drive per workspace)
 - Optional [SecretManagement](https://github.com/PowerShell/SecretManagement) integration for secure token storage
 
 ## Installation
@@ -31,97 +35,216 @@ cd SlackDrive
 Import-Module .\module\SlackDrive.psd1
 ```
 
-## Quick Start
+## Connection Methods
 
-```powershell
-# Create a drive for your workspace
-New-SlackDrive -Name MySlack -Token "xoxb-your-bot-token"
+SlackDrive supports three connection methods. Choose the one that fits your environment.
 
-# List top-level items
-ls MySlack:\
+### Method A: OAuth PKCE (Recommended)
 
-# List channels
-ls MySlack:\channels
+Authenticate via browser. No token stored on disk. Best for personal workspaces or workspaces where the admin has approved the app.
 
-# List users
-ls MySlack:\users
-
-# Read messages from a channel
-ls MySlack:\channels\general
-
-# Get channel info
-Get-Item MySlack:\channels\general
-
-# Get user info
-Get-Item MySlack:\users\john.doe
-
-# Read a message thread
-Get-Content MySlack:\channels\general\1030_john.doe_hello
-```
-
-## Getting a Bot Token
+#### 1. Create a Slack App
 
 1. Go to https://api.slack.com/apps
-2. Create a new app (or select existing)
-3. Go to **OAuth & Permissions**
-4. Add Bot Token Scopes:
-   - `channels:read` - List public channels
-   - `channels:history` - Read channel messages
-   - `groups:read` - List private channels
-   - `groups:history` - Read private channel messages
-   - `users:read` - List users
-   - `search:read` - Search messages
-5. Install to workspace
-6. Copy the Bot User OAuth Token (`xoxb-...`)
+2. Click **Create New App** > **From scratch**
+3. Enter an app name and select your workspace
 
-## Secure Token Storage (Optional)
+#### 2. Set Redirect URL
 
-SlackDrive supports [Microsoft.PowerShell.SecretManagement](https://github.com/PowerShell/SecretManagement) for encrypted token storage. Tokens are never written to disk in plain text when using this approach.
+Go to **OAuth & Permissions** > **Redirect URLs** and add:
+
+```
+https://yotsuda.github.io/SlackDrive/oauth/callback.html
+```
+
+This is a static page hosted by SlackDrive that relays the OAuth callback to your local machine. PKCE ensures security -- the auth code alone cannot be used to obtain a token.
+
+> **Note:** Manual configuration of User Token Scopes is not required. SlackDrive automatically requests the necessary scopes during the PKCE flow.
+
+#### 3. Configure SlackDriveConfig.json
+
+Copy the **Client ID** and **Client Secret** from the **Basic Information** page.
 
 ```powershell
-# One-time setup
-Install-PSResource Microsoft.PowerShell.SecretManagement
-Install-PSResource Microsoft.PowerShell.SecretStore   # or any vault extension
-
-# Save your token securely
-Set-SlackDriveSecret -Name "SlackToken-MyWorkspace" -Token "xoxb-your-bot-token"
-
-# Create a drive using the stored secret
-New-SlackDrive -Name MySlack -SecretName "SlackToken-MyWorkspace"
+Edit-SlackConfig
 ```
-
-> **Note:** Without SecretManagement, the `-Token` parameter accepts a plain-text token directly. If you use the auto-mount configuration (`SlackDriveConfig.json`), tokens are stored in plain text in the config file. Ensure appropriate file permissions on that file.
-
-## Drive Structure
-
-```
-Slack:\
-├── channels\
-│   ├── general\
-│   │   └── [messages]
-│   └── random\
-├── users\
-│   ├── john.doe
-│   └── jane.smith
-└── files\
-```
-
-## Auto-Mount Configuration
-
-Create `SlackDriveConfig.json` in your PowerShell module directory to auto-mount drives on module import:
 
 ```json
 {
-  "rateLimitDelayMs": 1000,
-  "cacheExpiryMinutes": 5,
+  "clientId": "YOUR_CLIENT_ID",
+  "clientSecret": "YOUR_CLIENT_SECRET",
   "psDrives": [
     {
-      "name": "MySlack",
-      "token": "xoxb-...",
+      "name": "Slack",
+      "description": "My workspace",
       "enabled": true
     }
   ]
 }
+```
+
+#### 4. Mount
+
+```powershell
+Import-SlackConfig
+cd Slack:\
+```
+
+A browser window opens on first access for OAuth authentication. After approval, the token is used for the current session.
+
+---
+
+### Method B: User OAuth Token
+
+Copy a user token (`xoxp-`) from the Slack App settings. Use this when PKCE is blocked by workspace admin policy.
+
+#### 1. Create a Slack App (same as Method A)
+
+#### 2. Configure User Token Scopes
+
+Go to **OAuth & Permissions** > **User Token Scopes** and add:
+
+- `channels:read`, `channels:history` -- Channels
+- `groups:read`, `groups:history` -- Private channels
+- `im:read`, `im:history` -- Direct messages
+- `mpim:read`, `mpim:history` -- Group DMs
+- `users:read` -- User list
+- `files:read` -- File list
+- `chat:write` -- Post messages (optional)
+
+Click **Install to Workspace** (or **Reinstall**) after adding scopes.
+
+#### 3. Copy the Token
+
+Copy the **User OAuth Token** (`xoxp-...`) from the **OAuth & Permissions** page.
+
+#### 4. Mount
+
+```powershell
+New-SlackDrive -Name Slack -Token 'xoxp-...'
+```
+
+Or add to the config file:
+
+```json
+{
+  "psDrives": [
+    {
+      "name": "Slack",
+      "token": "xoxp-...",
+      "enabled": true
+    }
+  ]
+}
+```
+
+> **Tip:** Use [SecretManagement](https://github.com/PowerShell/SecretManagement) to avoid storing tokens in plain text:
+> ```powershell
+> Set-SlackDriveSecret -Name "MySlackToken" -Token "xoxp-..."
+> New-SlackDrive -Name Slack -SecretName "MySlackToken"
+> ```
+
+---
+
+### Method C: Browser Token (No App Required)
+
+Use a token from the Slack web client. No Slack App creation needed. Tokens are short-lived (hours to days).
+
+#### 1. Get Token and Cookie
+
+1. Log in to Slack in your browser
+2. Open DevTools (F12) > **Network** tab
+3. Select a request with `conversation` in the URL
+4. Copy the `token` value (`xoxc-...`) from the **Payload** tab
+5. Go to **Application** tab > **Cookies** > copy the `d` value (`xoxd-...`)
+
+#### 2. Mount
+
+```powershell
+New-SlackDrive -Name Slack -Token 'xoxc-...' -Cookie 'd=xoxd-...'
+```
+
+> **Note:** Browser tokens expire when the Slack session ends. Do not store them in config files.
+
+## Usage
+
+### Drive Structure
+
+```
+Slack:\
++-- Channels\
+|   +-- general\
+|   |   +-- 0329_0820_4959_alice_Hello everyone\    <- message (cd into for thread)
+|   |       +-- 0329_0825_1234_bob_Great idea       <- thread reply
+|   +-- random\
++-- DirectMessages\
++-- Users\
+|   +-- alice
+|   +-- bob
++-- Files\
+```
+
+### Browsing
+
+```powershell
+# List channels
+ls Slack:\Channels
+
+# List messages in a channel
+ls Slack:\Channels\general
+
+# Navigate into a message to see thread replies
+cd Slack:\Channels\general\0329_0820_4959_alice_Hello
+ls
+
+# Read message text
+Get-Content Slack:\Channels\general\0329_0820_4959_alice_Hello
+
+# Get channel details
+Get-Item Slack:\Channels\general
+
+# List users
+ls Slack:\Users
+
+# Refresh cache
+ls Slack:\Channels -Force
+ls Slack:\Users -Force
+```
+
+### Posting Messages
+
+```powershell
+# Post to a channel
+New-Item Slack:\Channels\general -Value "Hello from PowerShell!"
+
+# Reply to a thread
+New-Item Slack:\Channels\general\0329_0820_4959_alice_Hello -Value "Thread reply"
+```
+
+### Searching Users
+
+```powershell
+# Search by name (uses Slack's internal search API, requires browser token)
+Find-SlackUser john
+```
+
+### Multiple Workspaces
+
+```json
+{
+  "clientId": "YOUR_CLIENT_ID",
+  "clientSecret": "YOUR_CLIENT_SECRET",
+  "psDrives": [
+    { "name": "Work", "description": "Work workspace", "enabled": true },
+    { "name": "Personal", "token": "xoxp-...", "enabled": true }
+  ]
+}
+```
+
+```powershell
+Import-SlackConfig
+ls Work:\Channels
+ls Personal:\Channels
 ```
 
 ## Requirements
