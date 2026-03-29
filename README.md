@@ -71,7 +71,7 @@ Edit-SlackConfig
 
 ```json
 {
-  "PsDrives": [
+  "PSDrives": [
     {
       "Name": "Slack",
       "Description": "My workspace",
@@ -128,7 +128,7 @@ Or add to the config file:
 
 ```json
 {
-  "PsDrives": [
+  "PSDrives": [
     {
       "Name": "Slack",
       "Token": "xoxp-...",
@@ -224,7 +224,7 @@ New-Item Slack:\Channels\general\0329_0820_4959_alice_Hello -Value "Thread reply
 ### Searching Users
 
 ```powershell
-# Search by name (uses Slack's internal search API, requires browser token)
+# Search by name (uses Slack's internal search API)
 Find-SlackUser john
 ```
 
@@ -232,7 +232,7 @@ Find-SlackUser john
 
 ```json
 {
-  "PsDrives": [
+  "PSDrives": [
     { "Name": "Work", "ClientId": "...", "ClientSecret": "...", "Enabled": true },
     { "Name": "Personal", "Token": "xoxp-...", "Enabled": true }
   ]
