@@ -98,17 +98,7 @@ public class SlackAuthManager
     private string WaitForAuthorizationCode(string redirectUrl, string expectedState, string authUrl, CancellationToken ct)
     {
         var uri = new Uri(redirectUrl);
-        
-        // ngrok や外部 URL の場合は localhost:8765 で待機
-        string listenerPrefix;
-        if (uri.Host.Contains("ngrok") || uri.Host.Contains("localtunnel") || uri.Scheme == "https")
-        {
-            listenerPrefix = $"http://localhost:8765{uri.AbsolutePath}";
-        }
-        else
-        {
-            listenerPrefix = $"{uri.Scheme}://{uri.Host}:{uri.Port}{uri.AbsolutePath}";
-        }
+        var listenerPrefix = $"{uri.Scheme}://{uri.Host}:{uri.Port}{uri.AbsolutePath}";
         if (!listenerPrefix.EndsWith("/")) listenerPrefix += "/";
         
         using var listener = new HttpListener();
@@ -119,10 +109,9 @@ public class SlackAuthManager
         }
         catch (HttpListenerException ex)
         {
-            int port = uri.Host.Contains("ngrok") ? 8765 : uri.Port;
-            string message = port <= 1024
-                ? $"Failed to start HttpListener on port {port}. Administrative privileges may be required."
-                : $"Failed to start HttpListener on port {port}. The port may be in use.";
+            string message = uri.Port <= 1024
+                ? $"Failed to start HttpListener on port {uri.Port}. Administrative privileges may be required."
+                : $"Failed to start HttpListener on port {uri.Port}. The port may be in use.";
             throw new InvalidOperationException(message, ex);
         }
         
